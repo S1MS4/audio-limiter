@@ -10,7 +10,13 @@
 // is applied AFTER the loopback tap. If it is applied before, we capture
 // silence and the whole approach is dead.
 //
-// This is undocumented for the per-process case, so measure it.
+// This is undocumented for the per-process case, so it was measured.
+//
+// RESULT (2026-07-22, Windows 11, Discord): DEAD. Capture peak fell from
+// 0.0287 to 0.0006 when the session was muted -- session volume is applied
+// before the loopback tap. Diverting this way is impossible; a virtual audio
+// device remains necessary. Kept so the result can be re-verified on future
+// Windows builds rather than re-argued.
 
 #include "com_ptr.h"
 
@@ -56,6 +62,16 @@ typedef struct {
 namespace probe {
 namespace {
 
+// {94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90}
+const GUID IID_IAgileObject = {
+    0x94EA2B94, 0xE9CC, 0x49E0,
+    {0xC0, 0xFF, 0xEE, 0x64, 0xCA, 0x8F, 0x5B, 0x90}};
+
+// {00000003-0000-0000-C000-000000000046}
+const GUID IID_IMarshal = {
+    0x00000003, 0x0000, 0x0000,
+    {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
+
 // {41D949AB-9862-444A-80F6-C261334DA5EB}
 const GUID __uuidof_IActivateAudioInterfaceCompletionHandler = {
     0x41D949AB, 0x9862, 0x444A,
@@ -70,6 +86,14 @@ public:
     HRESULT result = E_FAIL;
     ComPtr<IAudioClient> client;
 
+    // ActivateAudioInterfaceAsync completes on an MTA thread and requires the
+    // handler to be agile. Without a free-threaded marshaler the activation
+    // is rejected outright with E_ILLEGAL_METHOD_CALL, before any audio work
+    // is attempted.
+    ComPtr<IUnknown> ftm;
+
+    Handler() { CoCreateFreeThreadedMarshaler(nullptr, ftm.put()); }
+
     // Stack-allocated and outlives the call, so refcounting is a formality.
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
         if (!ppv) return E_POINTER;
@@ -78,6 +102,12 @@ public:
             *ppv = static_cast<IActivateAudioInterfaceCompletionHandler*>(this);
             return S_OK;
         }
+        if (IsEqualIID(riid, IID_IAgileObject)) {
+            *ppv = static_cast<IActivateAudioInterfaceCompletionHandler*>(this);
+            return S_OK;
+        }
+        if (IsEqualIID(riid, IID_IMarshal) && ftm)
+            return ftm->QueryInterface(riid, ppv);
         *ppv = nullptr;
         return E_NOINTERFACE;
     }

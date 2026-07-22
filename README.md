@@ -211,7 +211,11 @@ Yes. It caps any application's output. Discord is just the obvious use case.
 **Why is a virtual audio device still required?**
 Redirecting is the only way to actually stop loud audio, and that needs somewhere to redirect *to* -- a private channel Discord gets pointed at so its sound reaches the limiter instead of going straight to your ears.
 
-Bundling one was built and tested, and it does not work yet. The obvious candidate ([VirtualDrivers](https://github.com/VirtualDrivers/Virtual-Audio-Driver), MIT, distributed as "Signed") installs and then refuses to start with `CM_PROB_UNSIGNED_DRIVER` (code 52): its catalog is not attestation-signed for kernel-mode loading, so Windows will not load it unless the machine is in test-signing mode. Shipping it would hand every user a broken device in Device Manager. The install code is written and works; it needs a driver Windows will accept.
+Two ways round this were built and measured, and neither works.
+
+Skipping the device entirely: capture Discord with per-process loopback, then mute its normal path so only the limited copy is heard. Measured dead -- capture peak fell from 0.0287 to 0.0006 when the session was muted, because session volume is applied before the loopback tap. You would get silence, not limited audio.
+
+Bundling a device instead: The obvious candidate ([VirtualDrivers](https://github.com/VirtualDrivers/Virtual-Audio-Driver), MIT, distributed as "Signed") installs and then refuses to start with `CM_PROB_UNSIGNED_DRIVER` (code 52): its catalog is not attestation-signed for kernel-mode loading, so Windows will not load it unless the machine is in test-signing mode. Shipping it would hand every user a broken device in Device Manager. The install code is written and works; it needs a driver Windows will accept.
 
 **Do I have to configure anything?**
 No. There is one switch. The default ceiling catches screaming and soundboard spam while leaving normal conversation alone. If you want to tune it, everything else is behind "Advanced".
