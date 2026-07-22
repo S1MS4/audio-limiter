@@ -321,7 +321,8 @@ bool StartProtection(std::wstring& errorOut) {
     const DWORD pid = sessions::FindDiscordAudioPid();
     if (pid == 0) {
         errorOut = L"Discord is not playing any audio yet.\n\n"
-                   L"Open Discord and join a voice channel, then try again.";
+                   L"Open Discord and join a voice channel. Protection will "
+                   L"start on its own once it does.";
         return false;
     }
 
@@ -357,6 +358,29 @@ bool StartProtection(std::wstring& errorOut) {
     g_active = true;
     UpdateTrayIcon();
     return true;
+}
+
+// Discord is Electron and restarts constantly -- updates, crashes, the user
+// quitting it. Every restart means a new pid, which silently orphans the
+// routing override: audio goes straight to the speakers again and the app
+// keeps reporting "Protecting" while doing nothing. Re-check periodically and
+// re-apply, otherwise protection is only ever true until Discord next blinks.
+void CheckDiscordStillRouted() {
+    if (!g_active) return;
+
+    const DWORD current = sessions::FindDiscordAudioPid();
+    if (current == 0 || current == g_routedPid) return;
+
+    // A different process owns Discord's audio now. Point at the new one.
+    g_router.SetEndpoint(g_routedPid, L"");
+    g_routedPid = 0;
+    g_engine.Stop();
+
+    std::wstring err;
+    if (!StartProtection(err)) {
+        g_active = false;
+        UpdateTrayIcon();
+    }
 }
 
 void StopProtection() {
@@ -1024,6 +1048,10 @@ void ShowSettings() {
 
 LRESULT CALLBACK TrayProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+    case WM_TIMER:
+        if (wp == 1) CheckDiscordStillRouted();
+        return 0;
+
     case WM_TRAYICON:
         if (LOWORD(lp) == WM_LBUTTONDBLCLK) { ShowSettings(); return 0; }
         if (LOWORD(lp) == WM_RBUTTONUP || LOWORD(lp) == WM_CONTEXTMENU) {
@@ -1076,6 +1104,7 @@ LRESULT CALLBACK TrayProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
 
     case WM_DESTROY:
+        KillTimer(h, 1);
         StopProtection();
         Shell_NotifyIconW(NIM_DELETE, &g_nid);
         PostQuitMessage(0);
@@ -1170,6 +1199,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmdLine, int) {
     g_nid.hIcon = MakeDotIcon(RGB(120, 120, 120));
     wcscpy_s(g_nid.szTip, L"Audio Limiter");
     Shell_NotifyIconW(NIM_ADD, &g_nid);
+
+    // 2s: fast enough that a Discord restart is invisible, slow enough that
+    // session enumeration costs nothing.
+    SetTimer(g_hwnd, 1, 2000, nullptr);
 
     if (g_settings.enabled) {
         std::wstring err;
