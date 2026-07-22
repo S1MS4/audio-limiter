@@ -53,10 +53,6 @@ foreach(tgt AudioLimiter m0spike)
         # Static CRT: one self-contained exe, no redistributable prerequisite.
         set_property(TARGET ${tgt} PROPERTY
                      MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-        # The Windows SDK only declares the Core Audio GUIDs; the definitions
-        # live in uuid.lib. (MinGW ships neither, which is why src/guids.cpp
-        # exists -- it is inert here but harmless.)
-        target_link_libraries(${tgt} PRIVATE uuid)
         # We supply src/app.manifest ourselves, so suppress the one MSVC
         # generates or the resource compiler sees two and aborts.
         target_link_options(${tgt} PRIVATE /MANIFEST:NO)
