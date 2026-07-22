@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace probe { int Run(DWORD pid); }
+
 namespace {
 
 // Mixing printf and wprintf on one stream orients it to bytes and silently
@@ -239,6 +241,8 @@ int wmain(int argc, wchar_t** argv) {
         rc = CmdGet(static_cast<DWORD>(_wtoi(argv[2])));
     } else if (cmd == L"route" && argc >= 4) {
         rc = CmdRoute(static_cast<DWORD>(_wtoi(argv[2])), argv[3]);
+    } else if (cmd == L"looptest" && argc >= 3) {
+        rc = probe::Run(static_cast<DWORD>(_wtoi(argv[2])));
     } else if (cmd == L"restore" && argc >= 3) {
         rc = CmdRoute(static_cast<DWORD>(_wtoi(argv[2])), L"");
     } else {

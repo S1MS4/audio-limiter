@@ -21,7 +21,7 @@ set(CORE_SOURCES
 add_executable(AudioLimiter WIN32 src/app.cpp src/app.rc ${CORE_SOURCES})
 
 # Developer harness for the routing layer.
-add_executable(m0spike src/main.cpp ${CORE_SOURCES})
+add_executable(m0spike src/main.cpp src/loopback_probe.cpp ${CORE_SOURCES})
 
 # Offline DSP tests. Console app, no Windows audio APIs involved.
 add_executable(test_dsp tests/test_dsp.cpp)
