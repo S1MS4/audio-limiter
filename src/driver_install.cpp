@@ -86,6 +86,20 @@ bool Install(const std::wstring& infPath, std::wstring& error) {
         return false;
     }
 
+    // Stage the package into the driver store first. Without this the device
+    // node exists but has nothing to bind to, and Device Manager shows it in
+    // an error state -- which UpdateDriverForPlugAndPlayDevices reports as
+    // success, so the failure is silent unless we check afterwards.
+    wchar_t storedInf[MAX_PATH] = {};
+    if (!SetupCopyOEMInfW(infPath.c_str(), nullptr, SPOST_PATH, 0, storedInf,
+                          MAX_PATH, nullptr, nullptr)) {
+        const DWORD e = GetLastError();
+        if (e != ERROR_FILE_EXISTS) {
+            error = L"Windows rejected the driver package.";
+            return false;
+        }
+    }
+
     BOOL reboot = FALSE;
     if (!UpdateDriverForPlugAndPlayDevicesW(nullptr, kHardwareId,
                                             infPath.c_str(),
@@ -94,7 +108,44 @@ bool Install(const std::wstring& infPath, std::wstring& error) {
                 L"could not be installed.";
         return false;
     }
+
+    // Verify rather than trust: a device left in an error state is worse than
+    // a clean failure, because the app will then find an endpoint that does
+    // not actually carry audio.
+    if (!IsHealthy()) {
+        error = L"The virtual audio device installed but did not start. "
+                L"A reboot may be required.";
+        return false;
+    }
     return true;
+}
+
+// True only when a device with our hardware id exists AND has started. The
+// distinction matters: SetupAPI happily leaves a half-installed node behind.
+bool IsHealthy() {
+    HDEVINFO set = SetupDiGetClassDevsW(nullptr, L"ROOT", nullptr,
+                                        DIGCF_ALLCLASSES | DIGCF_PRESENT);
+    if (set == INVALID_HANDLE_VALUE) return false;
+
+    bool healthy = false;
+    SP_DEVINFO_DATA dev{sizeof(SP_DEVINFO_DATA)};
+    for (DWORD i = 0; SetupDiEnumDeviceInfo(set, i, &dev); ++i) {
+        wchar_t ids[512] = {};
+        if (!SetupDiGetDeviceRegistryPropertyW(set, &dev, SPDRP_HARDWAREID,
+                                               nullptr, (PBYTE)ids, sizeof(ids),
+                                               nullptr))
+            continue;
+        if (_wcsicmp(ids, kHardwareId) != 0) continue;
+
+        ULONG status = 0, problem = 0;
+        if (CM_Get_DevNode_Status(&status, &problem, dev.DevInst, 0) == CR_SUCCESS &&
+            problem == 0) {
+            healthy = true;
+            break;
+        }
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    return healthy;
 }
 
 bool Uninstall(std::wstring& error) {

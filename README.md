@@ -55,9 +55,7 @@ This fixes that. You set a maximum. Nothing gets past it. Ever.
 
 **2.** Run it. Click through the prompts.
 
-**3.** Approve the one prompt asking to install the audio device.
-
-**4.** Done. It starts automatically and lives in your system tray.
+**3.** Done. It starts automatically and lives in your system tray.
 
 No administrator rights, no UAC prompt, no config files, no command line, no Discord settings to change. To change the limit, right-click the tray icon and drag one slider.
 
@@ -120,8 +118,9 @@ The installer is **not code-signed yet**, so Windows SmartScreen will warn you t
 
 - Windows 10 (build 1903 or newer) or Windows 11
 - Discord desktop, or any other app you want to cap
+- A virtual audio device: [VB-CABLE](https://vb-audio.com/Cable/) (free) if you do not already run Voicemeeter or similar
 
-Nothing else. The virtual audio device is bundled and installed for you.
+Bundling a virtual device was attempted and does not currently work -- see [below](#why-is-a-virtual-audio-device-still-required).
 
 Works with Discord, Vesktop, and Discord in a browser. It caps whatever the program plays, so it does not care which one you use.
 
@@ -193,8 +192,10 @@ About 35 milliseconds, which you will not notice. You are listening through it, 
 **Can I use it on something other than Discord?**
 Yes. It caps any application's output. Discord is just the obvious use case.
 
-**What is that audio device prompt during install?**
-Redirecting is the only way to actually stop loud audio, and that needs a virtual audio device -- the private channel Discord gets pointed at so its sound reaches the limiter instead of going straight to your ears. It is bundled, signed, MIT licensed, and removed again when you uninstall. It is the only step that asks for administrator rights.
+**Why is a virtual audio device still required?**
+Redirecting is the only way to actually stop loud audio, and that needs somewhere to redirect *to* -- a private channel Discord gets pointed at so its sound reaches the limiter instead of going straight to your ears.
+
+Bundling one was built and tested, and it does not work yet. The obvious candidate ([VirtualDrivers](https://github.com/VirtualDrivers/Virtual-Audio-Driver), MIT, distributed as "Signed") installs and then refuses to start with `CM_PROB_UNSIGNED_DRIVER` (code 52): its catalog is not attestation-signed for kernel-mode loading, so Windows will not load it unless the machine is in test-signing mode. Shipping it would hand every user a broken device in Device Manager. The install code is written and works; it needs a driver Windows will accept.
 
 **Do I have to configure anything?**
 No. There is one switch. The default ceiling catches screaming and soundboard spam while leaving normal conversation alone. If you want to tune it, everything else is behind "Advanced".
@@ -208,9 +209,9 @@ Yes, and you should try it first. Windows has a built-in compressor: **Sound Con
 
 Honest answer: Voicemeeter can do this, and if you already run it, you may not need this at all. It has per-bus limiters, and pointing Discord at a virtual input and limiting that bus achieves the same result.
 
-What this does differently is remove the setup entirely. Voicemeeter asks you to understand a mixer -- virtual inputs, buses, patch routing -- and to point Discord at the right device by hand. This installs its own audio device, finds Discord's audio process itself, routes it, and gives you one switch. It also re-finds Discord when it restarts under a new process id, which a static mixer configuration will not do.
+What this does differently is remove the setup. Voicemeeter asks you to understand a mixer -- virtual inputs, buses, patch routing -- and to point Discord at the right device by hand. This finds Discord's audio process itself, routes it, and gives you one switch. It also re-finds Discord when it restarts under a new process id, which a static mixer configuration will not do.
 
-It is a usability product, not a capability one. If you are comfortable in Voicemeeter and have it configured already, you are not missing much. If the words "virtual input bus" made you close the tab, this is for you.
+It is a usability product, not a capability one, and it still sits on top of a virtual audio device rather than replacing the need for one. If you are comfortable in Voicemeeter and have it configured already, you are not missing much. If the words "virtual input bus" made you close the tab, this is for you.
 
 To be clear about what it cannot do: **per-speaker limits are not possible in this design.** By the time Discord's audio reaches Windows it is already mixed to one stream, so individual voices cannot be separated. That would require running inside Discord, which this deliberately does not do.
 
@@ -218,6 +219,7 @@ To be clear about what it cannot do: **per-speaker limits are not possible in th
 
 ## Roadmap
 
+- An attestation-signed virtual audio device, so there is no prerequisite
 - Authenticode signing so SmartScreen stops warning
 - A real project name
 

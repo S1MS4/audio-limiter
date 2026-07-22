@@ -295,10 +295,10 @@ bool StartProtection(std::wstring& errorOut) {
     const auto devices = EnumRenderDevices();
     const std::wstring virt = PickVirtualDevice(devices);
     if (virt.empty()) {
-        errorOut = L"The virtual audio device is missing.\n\n"
-                   L"Audio Limiter needs it to redirect Discord's sound. "
-                   L"Reinstall Audio Limiter, and accept the prompt that asks "
-                   L"to install the audio device.";
+        errorOut = L"No virtual audio device found.\n\n"
+                   L"Audio Limiter needs one to redirect Discord's sound "
+                   L"through. Install VB-CABLE (free, vb-audio.com/Cable), "
+                   L"then start Audio Limiter again.";
         return false;
     }
 

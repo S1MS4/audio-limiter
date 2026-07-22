@@ -4,6 +4,7 @@
 
 namespace driver {
 bool IsInstalled();
+bool IsHealthy();
 bool Install(const std::wstring& infPath, std::wstring& error);
 bool Uninstall(std::wstring& error);
 }
