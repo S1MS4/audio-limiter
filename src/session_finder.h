@@ -23,8 +23,16 @@ struct AudioSession {
     bool active = false;   // AudioSessionStateActive, i.e. currently making sound
 };
 
-// All render sessions on the default endpoint, including inactive ones.
-std::vector<AudioSession> EnumerateRenderSessions();
+// All render sessions on an endpoint, including inactive ones. Empty
+// deviceId means the system default.
+std::vector<AudioSession> EnumerateRenderSessions(
+    const std::wstring& deviceId = std::wstring());
+
+// True when the process is actively rendering to that specific endpoint.
+// Distinct from "we set a routing override for it": the override only
+// applies to streams opened afterwards, so a process can be overridden and
+// still be playing to the old device.
+bool IsRenderingTo(DWORD pid, const std::wstring& deviceId);
 
 // Sessions whose executable matches any of `names` (case-insensitive,
 // filename only). Pass e.g. {L"Discord.exe", L"DiscordPTB.exe"}.

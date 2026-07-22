@@ -220,6 +220,8 @@ HWND g_hwnd = nullptr;
 HWND g_settingsWnd = nullptr;
 NOTIFYICONDATAW g_nid = {};
 DWORD g_routedPid = 0;
+std::wstring g_virtualId;   // endpoint Discord was pointed at
+bool g_streamMoved = false; // has Discord actually opened a stream there?
 bool g_active = false;
 std::vector<Device> g_dlgDevices;
 
@@ -340,6 +342,8 @@ bool StartProtection(std::wstring& errorOut) {
         return false;
     }
     g_routedPid = pid;
+    g_virtualId = virt;
+    g_streamMoved = false;
 
     engine::Config cfg;
     cfg.captureDeviceId = virt;
@@ -367,6 +371,12 @@ bool StartProtection(std::wstring& errorOut) {
 // re-apply, otherwise protection is only ever true until Discord next blinks.
 void CheckDiscordStillRouted() {
     if (!g_active) return;
+
+    // The routing override only affects streams opened after it is set, so a
+    // freshly routed Discord keeps playing to the old device until it
+    // reopens its stream. Watch for the stream actually arriving.
+    if (!g_streamMoved && g_routedPid != 0 && !g_virtualId.empty())
+        g_streamMoved = sessions::IsRenderingTo(g_routedPid, g_virtualId);
 
     const DWORD current = sessions::FindDiscordAudioPid();
     if (current == 0 || current == g_routedPid) return;
@@ -630,8 +640,8 @@ void Paint(HWND h) {
              DT_LEFT | DT_TOP);
 
         RECT rs{rb.right + S(14), S(44), rc.right - S(90), S(62)};
-        Text(dc, on ? L"Protecting" : L"Paused", rs, g_fonts.small_,
-             on ? kAccent : kFaint, DT_LEFT | DT_TOP);
+        Text(dc, !on ? L"Paused" : (g_streamMoved ? L"Protecting" : L"Almost ready"),
+             rs, g_fonts.small_, on ? kAccent : kFaint, DT_LEFT | DT_TOP);
 
         // Toggle switch.
         const int tw = S(52), th = S(28);
@@ -651,6 +661,8 @@ void Paint(HWND h) {
         wchar_t head[160];
         if (!on) {
             wcscpy_s(head, L"Protection is off");
+        } else if (!g_streamMoved) {
+            wcscpy_s(head, L"Disconnect and rejoin your voice channel");
         } else {
             swprintf_s(head, L"Nothing louder than %d dB gets through",
                        (int)g_settings.ceilingDb);
@@ -664,10 +676,11 @@ void Paint(HWND h) {
 
         const wchar_t* msg;
         COLORREF dot;
-        if (!on)               { msg = L"Paused";                        dot = kFaint; }
-        else if (gr > 0.5f)    { msg = L"Caught a spike";                dot = kAccent; }
-        else if (in <= -59.0f) { msg = L"Listening - nothing playing";   dot = kSage; }
-        else                   { msg = L"Listening - under the ceiling"; dot = kSage; }
+        if (!on)                 { msg = L"Paused";                        dot = kFaint; }
+        else if (!g_streamMoved) { msg = L"Rejoin voice to activate";      dot = kAccent; }
+        else if (gr > 0.5f)      { msg = L"Caught a spike";                dot = kAccent; }
+        else if (in <= -59.0f)   { msg = L"Listening - nothing playing";   dot = kSage; }
+        else                     { msg = L"Listening - under the ceiling"; dot = kSage; }
 
         FillCircle(dc, ri.left + S(18), ri.top + S(21), S(4), dot);
         RECT rm{ri.left + S(30), ri.top + S(13), ri.right - S(14), ri.top + S(32)};

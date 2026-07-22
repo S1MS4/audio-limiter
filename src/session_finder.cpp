@@ -36,7 +36,7 @@ std::wstring ProcessImagePath(DWORD pid) {
 
 } // namespace
 
-std::vector<AudioSession> EnumerateRenderSessions() {
+std::vector<AudioSession> EnumerateRenderSessions(const std::wstring& deviceId) {
     std::vector<AudioSession> out;
 
     ComPtr<IMMDeviceEnumerator> enumerator;
@@ -47,8 +47,11 @@ std::vector<AudioSession> EnumerateRenderSessions() {
     }
 
     ComPtr<IMMDevice> device;
-    if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia,
-                                                   device.put()))) {
+    if (deviceId.empty()) {
+        if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia,
+                                                       device.put())))
+            return out;
+    } else if (FAILED(enumerator->GetDevice(deviceId.c_str(), device.put()))) {
         return out;
     }
 
@@ -109,6 +112,12 @@ std::vector<AudioSession> FindByExecutable(const std::vector<std::wstring>& name
         }
     }
     return out;
+}
+
+bool IsRenderingTo(DWORD pid, const std::wstring& deviceId) {
+    for (const auto& s : EnumerateRenderSessions(deviceId))
+        if (s.processId == pid && s.active) return true;
+    return false;
 }
 
 DWORD FindAudioOwningPid(const std::vector<std::wstring>& names) {
