@@ -22,6 +22,10 @@
   <a href="https://github.com/S1MS4/audio-limiter/issues"><strong>Report a problem</strong></a>
 </p>
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="Audio Limiter" width="420">
+</p>
+
 ---
 
 ## The Problem
@@ -92,18 +96,19 @@ Full design notes live in [fable-final-plan.md](fable-final-plan.md).
 
 ## Project Status
 
-Pre-release. The hard part is proven; the audio processing is not written yet.
+Working, and used daily by the author. Not yet packaged as a signed installer, so for now you build it yourself.
 
 | Milestone | Status |
 |---|---|
-| Per-app routing verified working on Windows 11 | Done |
+| Per-app routing verified on Windows 11 | Done |
 | Discord audio process identified reliably | Done |
-| Audio passthrough with no dropouts | In progress |
-| Limiter processing | Not started |
-| Tray interface | Not started |
+| WASAPI capture and render pipeline | Done |
+| Lookahead limiter | Done |
+| Tray app and interface | Done |
+| Crash recovery for routing | Done |
 | Signed installer | Not started |
 
-There is **no download yet.** The Releases link above will work once there is something worth downloading. Star the repo if you want to know when that happens.
+There is **no installer yet.** Build it with the two commands below, or star the repo to hear when a signed release lands.
 
 ---
 
