@@ -36,6 +36,22 @@ Discord has no volume ceiling. It has never had one, and people have been [askin
 
 This fixes that. You set a maximum. Nothing gets past it. Ever.
 
+### Why the volume mixer does not already do this
+
+The Windows volume mixer **multiplies**. A limiter **compresses**. They are not the same operation.
+
+Turn Discord down to 50% and everything scales together. The quiet talker and the screamer both drop by the same proportion, so the gap between them -- the thing actually hurting you -- is completely unchanged.
+
+| | Quiet talker | Screamer | Can you hear both safely? |
+|---|---|---|---|
+| No adjustment | -30 dB | 0 dB | No, the screamer hurts |
+| Mixer at 50% | -36 dB (inaudible) | -6 dB (still painful) | No, and now you lost the quiet one |
+| Ceiling at -6 dB | -30 dB (untouched) | -6 dB (capped) | Yes |
+
+The mixer forces a choice: hear quiet people, or do not get blasted. One slider moves everything, so you cannot have both. A limiter leaves everything below the line completely alone and only acts on what crosses it.
+
+Discord's per-user volume sliders have the same problem -- they multiply too -- with the added flaw that you can only reach for them *after* it has already happened.
+
 ---
 
 ## What It Does
