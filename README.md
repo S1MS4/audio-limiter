@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?logo=windows&logoColor=white)](#requirements)
 [![Language](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)](#building-from-source)
-[![Status](https://img.shields.io/badge/Status-Pre--release-orange)](#project-status)
+[![Build](https://github.com/S1MS4/audio-limiter/actions/workflows/build.yml/badge.svg)](https://github.com/S1MS4/audio-limiter/actions/workflows/build.yml)
 [![Last commit](https://img.shields.io/github/last-commit/S1MS4/audio-limiter)](https://github.com/S1MS4/audio-limiter/commits/main)
 [![Stars](https://img.shields.io/github/stars/S1MS4/audio-limiter?style=social)](https://github.com/S1MS4/audio-limiter/stargazers)
 
@@ -55,11 +55,11 @@ This fixes that. You set a maximum. Nothing gets past it. Ever.
 
 **2.** Run it. Click through the prompts.
 
-**3.** Done. The tray icon turns green when it is protecting you.
+**3.** Done. It starts automatically and lives in your system tray.
 
-That is the whole setup. No config files, no command line, no Discord settings to change. If you want to adjust the ceiling, right-click the tray icon and drag one slider.
+No administrator rights, no UAC prompt, no config files, no command line, no Discord settings to change. To change the limit, right-click the tray icon and drag one slider.
 
-> **Uninstalling is equally simple.** The uninstaller puts your audio back exactly as it was.
+> **Uninstalling puts your audio back exactly as it was.** Standard Windows uninstall, from Settings or the Start menu.
 
 ---
 
@@ -100,21 +100,24 @@ Working, and used daily by the author. Not yet packaged as a signed installer, s
 
 | Milestone | Status |
 |---|---|
-| Per-app routing verified on Windows 11 | Done |
-| Discord audio process identified reliably | Done |
+| Per-app routing on Windows 10/11 | Done |
+| Discord audio process detection | Done |
 | WASAPI capture and render pipeline | Done |
-| Lookahead limiter | Done |
+| Lookahead limiter (18 tests passing) | Done |
 | Tray app and interface | Done |
 | Crash recovery for routing | Done |
-| Signed installer | Not started |
+| Installer with clean uninstall | Done |
+| Continuous integration | Done |
+| Authenticode code signing | Not yet |
 
-There is **no installer yet.** Build it with the two commands below, or star the repo to hear when a signed release lands.
+The installer is **not code-signed yet**, so Windows SmartScreen will warn you the first time you run it. Click "More info" then "Run anyway". Signing costs money and is the next thing on the list.
 
 ---
 
 ## Requirements
 
 - Windows 10 (build 1903 or newer) or Windows 11
+- A virtual audio device. If you already run [VB-CABLE](https://vb-audio.com/Cable/), Voicemeeter, or similar, you are set. If not, install VB-CABLE first -- it is free and takes a minute.
 - Discord desktop, or any other app you want to cap
 
 Works with Discord, Vesktop, and Discord in a browser. It caps whatever the program plays, so it does not care which one you use.
@@ -187,6 +190,9 @@ About 15 milliseconds, which you will not notice. You are listening through it, 
 **Can I use it on something other than Discord?**
 Yes. It caps any application's output. Discord is just the obvious use case.
 
+**Why does it need a virtual audio device?**
+Because redirecting is the only way to actually stop loud audio. The virtual device is the private channel Discord gets pointed at, so its sound reaches the limiter instead of going straight to your ears. Bundling one is planned; for now you install VB-CABLE once.
+
 **Is there something I can try right now, for free?**
 Yes, and you should try it first. Windows has a built-in compressor: **Sound Control Panel → your output device → Properties → Enhancements → Loudness Equalization**. It affects every program rather than just Discord, and some audio drivers do not offer it, but it costs nothing and it is already on your machine. If it solves your problem, you do not need this.
 
@@ -194,11 +200,9 @@ Yes, and you should try it first. Windows has a built-in compressor: **Sound Con
 
 ## Roadmap
 
-- Audio passthrough with verified zero dropouts
-- Lookahead limiter with adjustable ceiling
-- System tray interface with a single slider
-- Signed installer with automatic setup and clean uninstall
-- Automatic recovery if the app is ever closed unexpectedly
+- Authenticode signing so SmartScreen stops warning
+- Bundle a virtual audio device so there is no prerequisite at all
+- Per-user limits rather than one ceiling for everyone
 - A real project name
 
 ---

@@ -34,6 +34,7 @@ constexpr UINT WM_TRAYICON = WM_APP + 1;
 enum : UINT {
     IDM_TOGGLE = 1000,
     IDM_SETTINGS,
+    IDM_AUTOSTART,
     IDM_EXIT,
 };
 
@@ -151,6 +152,46 @@ bool LooksVirtual(const std::wstring& name) {
     for (const wchar_t* m : kMarkers)
         if (StrStrIW(name.c_str(), m)) return true;
     return false;
+}
+
+
+// ---------------------------------------------------------------- autostart
+
+constexpr wchar_t kRunKey[] = L"Software\Microsoft\Windows\CurrentVersion\Run";
+constexpr wchar_t kRunValue[] = L"AudioLimiter";
+
+std::wstring ExePath() {
+    wchar_t buf[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    return buf;
+}
+
+bool IsAutoStart() {
+    HKEY k{};
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKey, 0, KEY_READ, &k) != ERROR_SUCCESS)
+        return false;
+    wchar_t val[MAX_PATH * 2] = {};
+    DWORD sz = sizeof(val), type = 0;
+    const LONG r = RegQueryValueExW(k, kRunValue, nullptr, &type, (LPBYTE)val, &sz);
+    RegCloseKey(k);
+    return r == ERROR_SUCCESS && type == REG_SZ && val[0] != 0;
+}
+
+void SetAutoStart(bool on) {
+    HKEY k{};
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, kRunKey, 0, nullptr, 0, KEY_WRITE,
+                        nullptr, &k, nullptr) != ERROR_SUCCESS)
+        return;
+    if (on) {
+        // Quoted: the install path contains spaces under Program Files, and an
+        // unquoted Run value would be parsed as a different executable.
+        const std::wstring cmd = L""" + ExePath() + L""";
+        RegSetValueExW(k, kRunValue, 0, REG_SZ, (const BYTE*)cmd.c_str(),
+                       (DWORD)((cmd.size() + 1) * sizeof(wchar_t)));
+    } else {
+        RegDeleteValueW(k, kRunValue);
+    }
+    RegCloseKey(k);
 }
 
 // ---------------------------------------------------------------- state
@@ -882,6 +923,8 @@ LRESULT CALLBACK TrayProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         g_active ? L"Protection on" : L"Protection off");
             AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(m, MF_STRING, IDM_SETTINGS, L"Settings...");
+            AppendMenuW(m, MF_STRING | (IsAutoStart() ? MF_CHECKED : 0),
+                        IDM_AUTOSTART, L"Start with Windows");
             AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(m, MF_STRING, IDM_EXIT, L"Exit");
             POINT p; GetCursorPos(&p);
@@ -909,6 +952,7 @@ LRESULT CALLBACK TrayProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             SaveSettings();
             return 0;
         case IDM_SETTINGS: ShowSettings(); return 0;
+        case IDM_AUTOSTART: SetAutoStart(!IsAutoStart()); return 0;
         case IDM_EXIT: DestroyWindow(h); return 0;
         }
         return 0;
