@@ -437,43 +437,53 @@ void ShowBalloon(const wchar_t* title, const wchar_t* text, DWORD flags) {
 
 namespace ui {
 
-// Palette. Dark by default because this is a tray utility that sits next to
-// Discord, which is dark.
-constexpr COLORREF kBg        = RGB(0x14, 0x16, 0x1A);
-constexpr COLORREF kCard      = RGB(0x1C, 0x1F, 0x26);
-constexpr COLORREF kCardHover = RGB(0x23, 0x27, 0x30);
-constexpr COLORREF kTrack     = RGB(0x2C, 0x31, 0x3C);
-constexpr COLORREF kAccent    = RGB(0x3D, 0xDC, 0x84);
-constexpr COLORREF kAccentDim = RGB(0x24, 0x8A, 0x54);
-constexpr COLORREF kWarn      = RGB(0xF5, 0xA5, 0x24);
-constexpr COLORREF kText      = RGB(0xEC, 0xEF, 0xF4);
-constexpr COLORREF kMuted     = RGB(0x8B, 0x93, 0xA5);
-constexpr COLORREF kFaint     = RGB(0x5A, 0x62, 0x73);
+// Warm palette. Deliberately not the usual cool-grey dark theme -- the browns
+// and the terracotta accent are what give it character next to Discord.
+constexpr COLORREF kBg      = RGB(0x2B, 0x27, 0x23);
+constexpr COLORREF kCard    = RGB(0x35, 0x30, 0x2B);
+constexpr COLORREF kInset   = RGB(0x30, 0x2B, 0x27);
+constexpr COLORREF kField   = RGB(0x3A, 0x34, 0x2E);
+constexpr COLORREF kHover   = RGB(0x43, 0x3C, 0x35);
+constexpr COLORREF kFooter  = RGB(0x27, 0x23, 0x20);
+constexpr COLORREF kTrack   = RGB(0x4A, 0x42, 0x3B);
+constexpr COLORREF kAccent  = RGB(0xE0, 0x88, 0x5A);   // terracotta
+constexpr COLORREF kSage    = RGB(0xA9, 0xBC, 0x8C);   // muted green
+constexpr COLORREF kSageDim = RGB(0x6F, 0x82, 0x58);
+constexpr COLORREF kText    = RGB(0xF5, 0xF0, 0xE8);   // cream
+constexpr COLORREF kMuted   = RGB(0xA6, 0x9A, 0x8C);
+constexpr COLORREF kFaint   = RGB(0x7A, 0x6E, 0x63);
 
-// Layout in device-independent pixels; scaled once at runtime.
-constexpr int kW = 400, kH = 468;
+constexpr int kW = 400, kH = 470;
 
 struct Fonts {
-    HFONT title{}, value{}, label{}, body{}, small_{};
+    HFONT serifTitle{}, serifValue{}, label{}, body{}, small_{}, bodyBold{};
     void Create(int dpi) {
-        auto mk = [&](int pt, int weight) {
+        auto mk = [&](const wchar_t* face, const wchar_t* fallback, int pt,
+                      int weight) {
             LOGFONTW lf{};
             lf.lfHeight = -MulDiv(pt, dpi, 72);
             lf.lfWeight = weight;
             lf.lfQuality = CLEARTYPE_QUALITY;
-            wcscpy_s(lf.lfFaceName, L"Segoe UI Variable Display");
+            wcscpy_s(lf.lfFaceName, face);
             HFONT f = CreateFontIndirectW(&lf);
-            if (!f) { wcscpy_s(lf.lfFaceName, L"Segoe UI"); f = CreateFontIndirectW(&lf); }
+            if (!f) {
+                wcscpy_s(lf.lfFaceName, fallback);
+                f = CreateFontIndirectW(&lf);
+            }
             return f;
         };
-        title  = mk(15, FW_SEMIBOLD);
-        value  = mk(30, FW_SEMIBOLD);
-        label  = mk(9,  FW_SEMIBOLD);
-        body   = mk(10, FW_NORMAL);
-        small_ = mk(8,  FW_NORMAL);
+        // Georgia is on every Windows install and carries the warm, slightly
+        // heavy feel the design calls for far better than a UI sans.
+        serifTitle = mk(L"Georgia", L"Times New Roman", 16, FW_BOLD);
+        serifValue = mk(L"Georgia", L"Times New Roman", 26, FW_BOLD);
+        label      = mk(L"Segoe UI", L"Tahoma", 8, FW_SEMIBOLD);
+        body       = mk(L"Segoe UI", L"Tahoma", 10, FW_NORMAL);
+        bodyBold   = mk(L"Segoe UI", L"Tahoma", 9, FW_SEMIBOLD);
+        small_     = mk(L"Segoe UI", L"Tahoma", 8, FW_NORMAL);
     }
     void Destroy() {
-        for (HFONT* f : {&title, &value, &label, &body, &small_})
+        for (HFONT* f : {&serifTitle, &serifValue, &label, &body, &bodyBold,
+                         &small_})
             if (*f) { DeleteObject(*f); *f = nullptr; }
     }
 };
@@ -483,26 +493,44 @@ int g_dpi = 96;
 int g_clientW = kW;
 int S(int v) { return MulDiv(v, g_clientW, kW); }
 
-// Hit regions, recomputed on resize so painting and hit-testing never drift.
-RECT g_rSlider{}, g_rOutput{}, g_rVirtual{}, g_rToggle{};
+RECT g_rSlider{}, g_rOutput{}, g_rVirtual{}, g_rToggle{}, g_rAdvanced{};
 bool g_dragging = false;
-int g_hot = 0;   // 1 output, 2 virtual, 3 toggle
+int g_hot = 0;   // 1 output, 2 virtual, 3 toggle, 4 advanced
 
-void RoundRect(HDC dc, const RECT& r, int radius, COLORREF fill) {
+void ApplySize(HWND h, int x, int y);
+
+void FillRound(HDC dc, const RECT& r, int radius, COLORREF fill) {
     HBRUSH b = CreateSolidBrush(fill);
     HPEN p = CreatePen(PS_NULL, 0, 0);
     HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, p);
-    ::RoundRect(dc, r.left, r.top, r.right + 1, r.bottom + 1, radius, radius);
+    RoundRect(dc, r.left, r.top, r.right + 1, r.bottom + 1, radius, radius);
     SelectObject(dc, ob); SelectObject(dc, op);
     DeleteObject(b); DeleteObject(p);
 }
 
-void DrawText(HDC dc, const wchar_t* s, RECT r, HFONT f, COLORREF c, UINT fmt) {
+void FillCircle(HDC dc, int cx, int cy, int r, COLORREF fill) {
+    HBRUSH b = CreateSolidBrush(fill);
+    HPEN p = CreatePen(PS_NULL, 0, 0);
+    HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, p);
+    Ellipse(dc, cx - r, cy - r, cx + r, cy + r);
+    SelectObject(dc, ob); SelectObject(dc, op);
+    DeleteObject(b); DeleteObject(p);
+}
+
+void Text(HDC dc, const wchar_t* s, RECT r, HFONT f, COLORREF c, UINT fmt) {
     HGDIOBJ of = SelectObject(dc, f);
     SetTextColor(dc, c);
     SetBkMode(dc, TRANSPARENT);
     DrawTextW(dc, s, -1, &r, fmt | DT_NOPREFIX);
     SelectObject(dc, of);
+}
+
+SIZE Measure(HDC dc, const wchar_t* s, HFONT f) {
+    HGDIOBJ of = SelectObject(dc, f);
+    SIZE sz{};
+    GetTextExtentPoint32W(dc, s, (int)wcslen(s), &sz);
+    SelectObject(dc, of);
+    return sz;
 }
 
 std::wstring DeviceLabel(const std::wstring& id) {
@@ -511,41 +539,24 @@ std::wstring DeviceLabel(const std::wstring& id) {
     return L"Default";
 }
 
-// Sizes the frame to the authored design size at the window's current DPI.
-void ApplySize(HWND h, int x, int y);
-
-void ApplySize(HWND h, int x, int y) {
-    UINT dx = 96, dy = 96;
-    HMONITOR mon = MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST);
-    if (FAILED(GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dx, &dy))) dx = 96;
-    const int dpi = (int)dx;
-    const DWORD style = (DWORD)GetWindowLongPtrW(h, GWL_STYLE);
-    RECT r{0, 0, MulDiv(kW, dpi, 96), MulDiv(kH, dpi, 96)};
-    AdjustWindowRectExForDpi(&r, style, FALSE, 0, (UINT)dpi);
-    SetWindowPos(h, nullptr, x, y, r.right - r.left, r.bottom - r.top,
-                 SWP_NOZORDER | SWP_NOACTIVATE);
-}
-
 void Paint(HWND h) {
     PAINTSTRUCT ps;
     HDC front = BeginPaint(h, &ps);
     RECT rc; GetClientRect(h, &rc);
 
-    // Everything below is authored against kW and scaled by the real client
-    // width, so the layout can never overflow the window it is drawn into.
+    // Authored against kW and scaled by the real client width, so the layout
+    // can never overflow the window it is drawn into.
     if (rc.right != g_clientW && rc.right > 0) {
         g_clientW = rc.right;
         g_fonts.Destroy();
         g_fonts.Create(MulDiv(96, g_clientW, kW));
     }
 
-    // Double buffer: painting a gradient and a dozen shapes directly to the
-    // window flickers badly on resize.
     HDC dc = CreateCompatibleDC(front);
     HBITMAP bmp = CreateCompatibleBitmap(front, rc.right, rc.bottom);
     HGDIOBJ obmp = SelectObject(dc, bmp);
 
-    HBRUSH bg = CreateSolidBrush(kBg);
+    HBRUSH bg = CreateSolidBrush(kCard);
     FillRect(dc, &rc, bg);
     DeleteObject(bg);
 
@@ -554,148 +565,165 @@ void Paint(HWND h) {
     const bool on = g_active && st.running.load();
 
     // --- header -----------------------------------------------------------
-    RECT rt{pad, S(20), rc.right - pad, S(46)};
-    DrawText(dc, L"Audio Limiter", rt, g_fonts.title, kText, DT_LEFT | DT_TOP);
-
-    // Status pill, right-aligned.
     {
-        const wchar_t* txt = on ? L"Protecting" : L"Off";
-        HGDIOBJ of = SelectObject(dc, g_fonts.small_);
-        SIZE sz{}; GetTextExtentPoint32W(dc, txt, (int)wcslen(txt), &sz);
-        SelectObject(dc, of);
-        const int pw = sz.cx + S(28), ph = S(22);
-        RECT rp{rc.right - pad - pw, S(22), rc.right - pad, S(22) + ph};
-        RoundRect(dc, rp, ph, on ? kAccentDim : kTrack);
+        const int badge = S(38);
+        RECT rb{pad, S(20), pad + badge, S(20) + badge};
+        FillRound(dc, rb, S(12), kSageDim);
 
-        const int d = S(6);
-        const int cy = rp.top + ph / 2;
-        RECT rd{rp.left + S(9), cy - d / 2, rp.left + S(9) + d, cy - d / 2 + d};
-        HBRUSH dot = CreateSolidBrush(on ? kAccent : kFaint);
-        HGDIOBJ od = SelectObject(dc, dot);
-        HPEN np = CreatePen(PS_NULL, 0, 0);
-        HGDIOBJ opn = SelectObject(dc, np);
-        Ellipse(dc, rd.left, rd.top, rd.right, rd.bottom);
-        SelectObject(dc, od); SelectObject(dc, opn);
-        DeleteObject(dot); DeleteObject(np);
+        // Shield glyph, drawn rather than shipped as an icon resource.
+        HPEN sp = CreatePen(PS_SOLID, S(2), kText);
+        HGDIOBJ osp = SelectObject(dc, sp);
+        HGDIOBJ obr = SelectObject(dc, GetStockObject(NULL_BRUSH));
+        const int cx = (rb.left + rb.right) / 2, cy = (rb.top + rb.bottom) / 2;
+        const int w = S(7), t = S(9);
+        POINT shield[] = {{cx - w, cy - t}, {cx + w, cy - t},
+                          {cx + w, cy + S(1)}, {cx, cy + t}, {cx - w, cy + S(1)}};
+        Polygon(dc, shield, 5);
+        SelectObject(dc, osp); SelectObject(dc, obr);
+        DeleteObject(sp);
 
-        RECT rtx{rp.left + S(20), rp.top, rp.right, rp.bottom};
-        DrawText(dc, txt, rtx, g_fonts.small_, on ? kText : kMuted,
-                 DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        RECT rt{rb.right + S(14), S(21), rc.right - S(90), S(45)};
+        Text(dc, L"Audio Limiter", rt, g_fonts.serifTitle, kText,
+             DT_LEFT | DT_TOP);
+
+        RECT rs{rb.right + S(14), S(44), rc.right - S(90), S(62)};
+        Text(dc, on ? L"Protecting" : L"Paused", rs, g_fonts.small_,
+             on ? kAccent : kFaint, DT_LEFT | DT_TOP);
+
+        // Toggle switch.
+        const int tw = S(52), th = S(28);
+        g_rToggle = {rc.right - pad - tw, S(25), rc.right - pad, S(25) + th};
+        FillRound(dc, g_rToggle, th, on ? kSageDim : kTrack);
+        const int kr = (th - S(6)) / 2;
+        const int kx = on ? g_rToggle.right - S(3) - kr : g_rToggle.left + S(3) + kr;
+        FillCircle(dc, kx, (g_rToggle.top + g_rToggle.bottom) / 2, kr,
+                   on ? kText : kMuted);
     }
 
     // --- ceiling ----------------------------------------------------------
-    RECT rl{pad, S(66), rc.right - pad, S(84)};
-    DrawText(dc, L"MAXIMUM LOUDNESS", rl, g_fonts.label, kMuted, DT_LEFT | DT_TOP);
-
-    wchar_t val[32];
-    swprintf_s(val, L"%d", (int)g_settings.ceilingDb);
-    RECT rv{pad, S(86), rc.right - pad, S(130)};
-    DrawText(dc, val, rv, g_fonts.value, kText, DT_LEFT | DT_TOP);
-
-    HGDIOBJ of = SelectObject(dc, g_fonts.value);
-    SIZE vs{}; GetTextExtentPoint32W(dc, val, (int)wcslen(val), &vs);
-    SelectObject(dc, of);
-    RECT ru{pad + vs.cx + S(6), S(104), rc.right - pad, S(130)};
-    DrawText(dc, L"dB", ru, g_fonts.body, kMuted, DT_LEFT | DT_TOP);
-
-    // Slider. -40..0 dB mapped left to right.
     {
-        const int y = S(146), th = S(6);
+        RECT rl{pad, S(84), rc.right / 2, S(102)};
+        Text(dc, L"CEILING", rl, g_fonts.label, kMuted, DT_LEFT | DT_TOP);
+
+        wchar_t val[16];
+        swprintf_s(val, L"%d", (int)g_settings.ceilingDb);
+        const SIZE vs = Measure(dc, val, g_fonts.serifValue);
+        const SIZE us = Measure(dc, L"dB", g_fonts.small_);
+
+        RECT ru{rc.right - pad - us.cx, S(90), rc.right - pad, S(112)};
+        Text(dc, L"dB", ru, g_fonts.small_, kMuted, DT_RIGHT | DT_TOP);
+
+        RECT rv{rc.right - pad - us.cx - S(4) - vs.cx, S(74),
+                rc.right - pad - us.cx - S(4), S(112)};
+        Text(dc, val, rv, g_fonts.serifValue, kAccent, DT_RIGHT | DT_TOP);
+    }
+
+    // --- slider -----------------------------------------------------------
+    {
+        const int y = S(122), th = S(6);
         g_rSlider = {pad, y - S(12), rc.right - pad, y + th + S(12)};
         RECT tr{pad, y, rc.right - pad, y + th};
-        RoundRect(dc, tr, th, kTrack);
+        FillRound(dc, tr, th, kTrack);
 
         const float t = (g_settings.ceilingDb + 40.0f) / 40.0f;
         const int span = tr.right - tr.left;
         const int fx = tr.left + (int)(span * (t < 0 ? 0 : t > 1 ? 1 : t));
-
         RECT fr{tr.left, y, fx, y + th};
-        if (fr.right > fr.left) RoundRect(dc, fr, th, kAccent);
+        if (fr.right > fr.left + 2) FillRound(dc, fr, th, kAccent);
+        FillCircle(dc, fx, y + th / 2, S(8), kAccent);
 
-        const int kr = S(9);
-        HBRUSH kb = CreateSolidBrush(RGB(0xFF, 0xFF, 0xFF));
-        HPEN kp = CreatePen(PS_SOLID, S(2), kAccent);
-        HGDIOBJ ok = SelectObject(dc, kb), okp = SelectObject(dc, kp);
-        Ellipse(dc, fx - kr, y + th / 2 - kr, fx + kr, y + th / 2 + kr);
-        SelectObject(dc, ok); SelectObject(dc, okp);
-        DeleteObject(kb); DeleteObject(kp);
-
-        RECT rq{pad, y + S(20), rc.right - pad, y + S(38)};
-        DrawText(dc, L"Stricter", rq, g_fonts.small_, kFaint, DT_LEFT | DT_TOP);
-        DrawText(dc, L"Louder allowed", rq, g_fonts.small_, kFaint, DT_RIGHT | DT_TOP);
+        RECT rq{pad, y + S(14), rc.right - pad, y + S(32)};
+        Text(dc, L"Stricter", rq, g_fonts.small_, kFaint, DT_LEFT | DT_TOP);
+        Text(dc, L"Louder allowed", rq, g_fonts.small_, kFaint, DT_RIGHT | DT_TOP);
     }
 
-    // --- live meter -------------------------------------------------------
+    // --- status inset -----------------------------------------------------
     {
-        const int y = S(206), bh = S(4);
-        RECT rm{pad, y, rc.right - pad, y + bh};
-        RoundRect(dc, rm, bh, kTrack);
+        RECT ri{pad, S(178), rc.right - pad, S(250)};
+        FillRound(dc, ri, S(12), kInset);
 
-        // Input level, -60..0 dB.
-        float in = st.inputPeakDb.load();
-        if (in < -60.0f) in = -60.0f;
-        const float lt = (in + 60.0f) / 60.0f;
-        const int lw = (int)((rm.right - rm.left) * lt);
-        if (lw > 2) {
-            RECT rf{rm.left, y, rm.left + lw, y + bh};
-            const float gr = -st.gainReductionDb.load();
-            RoundRect(dc, rf, bh, gr > 0.5f ? kWarn : kAccent);
+        const float in = st.inputPeakDb.load();
+        const float gr = -st.gainReductionDb.load();
+
+        const wchar_t* msg;
+        COLORREF dot;
+        if (!on)                    { msg = L"Paused";                            dot = kFaint; }
+        else if (gr > 0.5f)         { msg = L"Limiting — holding it down";    dot = kAccent; }
+        else if (in <= -59.0f)      { msg = L"Listening — nothing playing";   dot = kSage; }
+        else                        { msg = L"Listening — under the ceiling"; dot = kSage; }
+
+        FillCircle(dc, ri.left + S(18), ri.top + S(21), S(4), dot);
+        RECT rm{ri.left + S(30), ri.top + S(13), ri.right - S(14), ri.top + S(32)};
+        Text(dc, msg, rm, g_fonts.bodyBold, kText, DT_LEFT | DT_TOP);
+
+        // Level meter with a tick marking where the ceiling sits.
+        const int my = ri.top + S(44), mh = S(6);
+        RECT mr{ri.left + S(18), my, ri.right - S(18), my + mh};
+        FillRound(dc, mr, mh, kTrack);
+
+        float lvl = in < -60.0f ? -60.0f : in;
+        const float lt = (lvl + 60.0f) / 60.0f;
+        const int lw = (int)((mr.right - mr.left) * lt);
+        if (on && lw > 2) {
+            RECT lr{mr.left, my, mr.left + lw, my + mh};
+            FillRound(dc, lr, mh, gr > 0.5f ? kAccent : kSage);
         }
 
-        wchar_t s[128];
-        const float gr = -st.gainReductionDb.load();
-        if (!on) wcscpy_s(s, L"Not running");
-        else if (in <= -59.9f) wcscpy_s(s, L"Discord is quiet right now");
-        else if (gr > 0.5f) swprintf_s(s, L"Turning it down by %.0f dB", gr);
-        else wcscpy_s(s, L"Below your limit -- nothing to do");
-
-        RECT rs{pad, y + S(12), rc.right - pad, y + S(32)};
-        DrawText(dc, s, rs, g_fonts.small_, kMuted, DT_LEFT | DT_TOP);
+        const float ct = (g_settings.ceilingDb + 60.0f) / 60.0f;
+        const int cxp = mr.left + (int)((mr.right - mr.left) *
+                                        (ct < 0 ? 0 : ct > 1 ? 1 : ct));
+        HPEN tp = CreatePen(PS_SOLID, S(2), kText);
+        HGDIOBJ otp = SelectObject(dc, tp);
+        MoveToEx(dc, cxp, my - S(3), nullptr);
+        LineTo(dc, cxp, my + mh + S(3));
+        SelectObject(dc, otp);
+        DeleteObject(tp);
     }
 
-    // --- device rows ------------------------------------------------------
-    auto row = [&](RECT& out, int y, const wchar_t* cap, const std::wstring& v,
-                   int hotId) {
-        out = {pad, y, rc.right - pad, y + S(56)};
-        RoundRect(dc, out, S(10), g_hot == hotId ? kCardHover : kCard);
+    // --- device fields ----------------------------------------------------
+    auto field = [&](RECT& out, int y, const wchar_t* cap,
+                     const std::wstring& v, int hotId) {
+        RECT rl{pad, y, rc.right - pad, y + S(16)};
+        Text(dc, cap, rl, g_fonts.label, kMuted, DT_LEFT | DT_TOP);
 
-        RECT rc1{out.left + S(14), out.top + S(9), out.right - S(30),
-                 out.top + S(25)};
-        DrawText(dc, cap, rc1, g_fonts.small_, kMuted, DT_LEFT | DT_TOP);
+        out = {pad, y + S(20), rc.right - pad, y + S(20) + S(38)};
+        FillRound(dc, out, S(19), g_hot == hotId ? kHover : kField);
 
-        RECT rc2{out.left + S(14), out.top + S(26), out.right - S(30),
-                 out.bottom - S(6)};
-        DrawText(dc, v.c_str(), rc2, g_fonts.body, kText,
-                 DT_LEFT | DT_TOP | DT_END_ELLIPSIS | DT_SINGLELINE);
-
-        // Chevron.
-        HPEN cp = CreatePen(PS_SOLID, S(2), kFaint);
-        HGDIOBJ ocp = SelectObject(dc, cp);
-        const int cx = out.right - S(18), cy = (out.top + out.bottom) / 2;
-        MoveToEx(dc, cx - S(4), cy - S(2), nullptr);
-        LineTo(dc, cx, cy + S(3));
-        LineTo(dc, cx + S(5), cy - S(2));
-        SelectObject(dc, ocp);
-        DeleteObject(cp);
+        RECT rv{out.left + S(16), out.top, out.right - S(28), out.bottom};
+        Text(dc, v.c_str(), rv, g_fonts.body, kText,
+             DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
     };
 
-    std::wstring outName = g_settings.outputDeviceId.empty()
-                               ? DeviceLabel(DefaultRenderId())
-                               : DeviceLabel(g_settings.outputDeviceId);
-    std::wstring virtName = DeviceLabel(PickVirtualDevice(g_dlgDevices));
+    const std::wstring outName = g_settings.outputDeviceId.empty()
+                                     ? DeviceLabel(DefaultRenderId())
+                                     : DeviceLabel(g_settings.outputDeviceId);
+    const std::wstring virtName = DeviceLabel(PickVirtualDevice(g_dlgDevices));
 
-    row(g_rOutput, S(250), L"YOU HEAR AUDIO THROUGH", outName, 1);
-    row(g_rVirtual, S(316), L"DISCORD IS REDIRECTED INTO", virtName, 2);
+    field(g_rOutput, S(266), L"YOU HEAR AUDIO THROUGH", outName, 1);
+    field(g_rVirtual, S(336), L"DISCORD IS REDIRECTED INTO", virtName, 2);
 
-    // --- toggle -----------------------------------------------------------
+    // --- footer -----------------------------------------------------------
     {
-        g_rToggle = {pad, S(388), rc.right - pad, S(388) + S(44)};
-        RoundRect(dc, g_rToggle, S(10),
-                  g_hot == 3 ? (on ? kAccentDim : kCardHover)
-                             : (on ? kAccentDim : kCard));
-        DrawText(dc, on ? L"Turn protection off" : L"Turn protection on",
-                 g_rToggle, g_fonts.body, on ? kText : kMuted,
-                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        RECT rf{0, S(414), rc.right, rc.bottom};
+        HBRUSH fb = CreateSolidBrush(kFooter);
+        FillRect(dc, &rf, fb);
+        DeleteObject(fb);
+
+        wchar_t info[128];
+        swprintf_s(info, L"%s  ·  ~%.0f ms latency",
+                   IsAutoStart() ? L"Starts with Windows" : L"Manual start",
+                   5.0 + (st.sampleRate.load()
+                              ? st.periodFrames.load() * 1000.0 /
+                                    st.sampleRate.load()
+                              : 10.0));
+        RECT ri2{pad, rf.top + S(18), rc.right / 2 + S(60), rf.bottom};
+        Text(dc, info, ri2, g_fonts.small_, kFaint, DT_LEFT | DT_TOP);
+
+        const SIZE as = Measure(dc, L"Advanced...", g_fonts.bodyBold);
+        g_rAdvanced = {rc.right - pad - as.cx, rf.top + S(14),
+                       rc.right - pad, rf.top + S(36)};
+        Text(dc, L"Advanced...", g_rAdvanced, g_fonts.bodyBold,
+             g_hot == 4 ? kText : kAccent, DT_RIGHT | DT_TOP);
     }
 
     BitBlt(front, 0, 0, rc.right, rc.bottom, dc, 0, 0, SRCCOPY);
@@ -703,6 +731,19 @@ void Paint(HWND h) {
     DeleteObject(bmp);
     DeleteDC(dc);
     EndPaint(h, &ps);
+}
+
+void ApplySize(HWND h, int x, int y) {
+    UINT dx = 96, dy = 96;
+    if (FAILED(GetDpiForMonitor(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST),
+                                MDT_EFFECTIVE_DPI, &dx, &dy)))
+        dx = 96;
+    const int dpi = (int)dx;
+    const DWORD style = (DWORD)GetWindowLongPtrW(h, GWL_STYLE);
+    RECT r{0, 0, MulDiv(kW, dpi, 96), MulDiv(kH, dpi, 96)};
+    AdjustWindowRectExForDpi(&r, style, FALSE, 0, (UINT)dpi);
+    SetWindowPos(h, nullptr, x, y, r.right - r.left, r.bottom - r.top,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void SetCeilingFromX(HWND h, int x) {
@@ -719,7 +760,7 @@ void SetCeilingFromX(HWND h, int x) {
 }
 
 // Device chooser. A native popup menu rather than a combo box: it already
-// matches the system dark theme and needs no owner-draw of its own.
+// matches the system theme and needs no owner-draw of its own.
 void ChooseDevice(HWND h, bool forOutput) {
     g_dlgDevices = EnumRenderDevices();
     HMENU m = CreatePopupMenu();
@@ -748,6 +789,46 @@ void ChooseDevice(HWND h, bool forOutput) {
         if (!StartProtection(err))
             MessageBoxW(h, err.c_str(), kAppName, MB_ICONWARNING);
     }
+    InvalidateRect(h, nullptr, FALSE);
+}
+
+void ShowAdvanced(HWND h) {
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING | (IsAutoStart() ? MF_CHECKED : 0), 1,
+                L"Start with Windows");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, 2, L"Open settings folder");
+    AppendMenuW(m, MF_STRING, 3, L"About");
+
+    POINT p{g_rAdvanced.right, g_rAdvanced.top};
+    ClientToScreen(h, &p);
+    SetForegroundWindow(h);
+    const int sel = (int)TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTALIGN,
+                                        p.x, p.y, 0, h, nullptr);
+    DestroyMenu(m);
+
+    if (sel == 1) SetAutoStart(!IsAutoStart());
+    else if (sel == 2) ShellExecuteW(h, L"open", AppDataPath(L"").c_str(),
+                                     nullptr, nullptr, SW_SHOWNORMAL);
+    else if (sel == 3)
+        MessageBoxW(h,
+                    L"Audio Limiter\n\n"
+                    L"A volume ceiling for Discord voice.\n"
+                    L"MIT licensed — github.com/S1MS4/audio-limiter",
+                    kAppName, MB_ICONINFORMATION);
+    InvalidateRect(h, nullptr, FALSE);
+}
+
+void ToggleProtection(HWND h) {
+    if (g_active) {
+        StopProtection();
+        g_settings.enabled = false;
+    } else {
+        std::wstring err;
+        if (StartProtection(err)) g_settings.enabled = true;
+        else MessageBoxW(h, err.c_str(), kAppName, MB_ICONINFORMATION);
+    }
+    SaveSettings();
     InvalidateRect(h, nullptr, FALSE);
 }
 
@@ -801,16 +882,9 @@ LRESULT CALLBACK SettingsProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         } else if (PtInRect(&ui::g_rVirtual, p)) {
             ui::ChooseDevice(h, false);
         } else if (PtInRect(&ui::g_rToggle, p)) {
-            if (g_active) {
-                StopProtection();
-                g_settings.enabled = false;
-            } else {
-                std::wstring err;
-                if (StartProtection(err)) g_settings.enabled = true;
-                else MessageBoxW(h, err.c_str(), kAppName, MB_ICONINFORMATION);
-            }
-            SaveSettings();
-            InvalidateRect(h, nullptr, FALSE);
+            ui::ToggleProtection(h);
+        } else if (PtInRect(&ui::g_rAdvanced, p)) {
+            ui::ShowAdvanced(h);
         }
         return 0;
     }
@@ -819,10 +893,11 @@ LRESULT CALLBACK SettingsProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         if (ui::g_dragging) { ui::SetCeilingFromX(h, p.x); return 0; }
 
         const int was = ui::g_hot;
-        ui::g_hot = PtInRect(&ui::g_rOutput, p)    ? 1
-                    : PtInRect(&ui::g_rVirtual, p) ? 2
-                    : PtInRect(&ui::g_rToggle, p)  ? 3
-                                                   : 0;
+        ui::g_hot = PtInRect(&ui::g_rOutput, p)     ? 1
+                    : PtInRect(&ui::g_rVirtual, p)  ? 2
+                    : PtInRect(&ui::g_rToggle, p)   ? 3
+                    : PtInRect(&ui::g_rAdvanced, p) ? 4
+                                                    : 0;
         if (was != ui::g_hot) {
             InvalidateRect(h, nullptr, FALSE);
             TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, h, 0};

@@ -86,7 +86,7 @@ Routing uses `IAudioPolicyConfigFactory::SetPersistedDefaultAudioEndpoint`, the 
 
 Discord runs as multiple Electron processes and the one rendering audio is not the first `Discord.exe` you find. The target PID comes from enumerating live render sessions via `IAudioSessionManager2` and preferring active ones.
 
-Audio is captured and rendered through WASAPI using `IAudioClient3::InitializeSharedAudioStream` at close to the minimum engine period, event-driven, with no allocation or locking on the audio thread and MMCSS "Pro Audio" scheduling. Target end-to-end latency is roughly 15 ms, which is inaudible when listening — you are not speaking through the chain.
+Audio is captured and rendered through WASAPI in shared mode, event-driven, with no allocation or locking on the audio threads and MMCSS "Pro Audio" scheduling. The limiter adds 5.02 ms of lookahead (pinned by a test); the rest of the ~35 ms end-to-end figure is capture and render buffering. The app reports its own measured latency in the footer.
 
 Full design notes live in [fable-final-plan.md](fable-final-plan.md).
 
@@ -185,7 +185,7 @@ No. Only the program you point it at is redirected. Everything else plays normal
 No. Anything below your ceiling passes through completely unchanged. The limiter only engages on sounds that would have hurt.
 
 **Does it add delay?**
-About 15 milliseconds, which you will not notice. You are listening through it, not speaking through it, so it does not affect conversation timing.
+About 35 milliseconds, which you will not notice. You are listening through it, not speaking through it, so it does not affect conversation timing.
 
 **Can I use it on something other than Discord?**
 Yes. It caps any application's output. Discord is just the obvious use case.
