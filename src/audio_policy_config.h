@@ -23,8 +23,7 @@ namespace routing {
 
 // Windows 11 21H2 and later.
 // 19 unused slots precede the three methods we care about.
-struct __declspec(uuid("ab3d4648-e242-459f-b02f-541c70306324"))
-IAudioPolicyConfigFactoryWin11 : public IInspectable {
+struct IAudioPolicyConfigFactoryWin11 : public IInspectable {
     virtual HRESULT STDMETHODCALLTYPE Unused00() = 0;
     virtual HRESULT STDMETHODCALLTYPE Unused01() = 0;
     virtual HRESULT STDMETHODCALLTYPE Unused02() = 0;
@@ -53,8 +52,7 @@ IAudioPolicyConfigFactoryWin11 : public IInspectable {
 };
 
 // Windows 10 before 21H2. One additional padding slot relative to Win11.
-struct __declspec(uuid("2a59116d-6c4f-45e0-a74f-707e3fef9258"))
-IAudioPolicyConfigFactoryWin10 : public IInspectable {
+struct IAudioPolicyConfigFactoryWin10 : public IInspectable {
     virtual HRESULT STDMETHODCALLTYPE Unused00() = 0;
     virtual HRESULT STDMETHODCALLTYPE Unused01() = 0;
     virtual HRESULT STDMETHODCALLTYPE Unused02() = 0;
@@ -82,6 +80,11 @@ IAudioPolicyConfigFactoryWin10 : public IInspectable {
         UINT32 processId, EDataFlow flow, ERole role, HSTRING* deviceId) = 0;
     virtual HRESULT STDMETHODCALLTYPE ClearAllPersistedApplicationDefaultEndpoints() = 0;
 };
+
+// Declared explicitly rather than via __declspec(uuid)/__uuidof, which is an
+// MSVC-only extension. GCC needs the constants.
+extern const GUID IID_AudioPolicyConfigFactoryWin11;  // ab3d4648-...
+extern const GUID IID_AudioPolicyConfigFactoryWin10;  // 2a59116d-...
 
 // Routes one process's audio to a specific endpoint.
 //

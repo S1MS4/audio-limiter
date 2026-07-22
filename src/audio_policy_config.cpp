@@ -36,6 +36,16 @@ constexpr wchar_t kActivationClass[] = L"Windows.Media.Internal.AudioPolicyConfi
 
 } // namespace
 
+// {ab3d4648-e242-459f-b02f-541c70306324}
+const GUID IID_AudioPolicyConfigFactoryWin11 = {
+    0xab3d4648, 0xe242, 0x459f,
+    {0xb0, 0x2f, 0x54, 0x1c, 0x70, 0x30, 0x63, 0x24}};
+
+// {2a59116d-6c4f-45e0-a74f-707e3fef9258}
+const GUID IID_AudioPolicyConfigFactoryWin10 = {
+    0x2a59116d, 0x6c4f, 0x45e0,
+    {0xa7, 0x4f, 0x70, 0x7e, 0x3f, 0xef, 0x92, 0x58}};
+
 EndpointRouter::~EndpointRouter() {
     if (win11_) win11_->Release();
     if (win10_) win10_->Release();
@@ -49,13 +59,13 @@ HRESULT EndpointRouter::Initialize() {
     // factory hands back, so a successful QI here means the padding counts in
     // the Win11 struct are the correct ones.
     HRESULT hr = RoGetActivationFactory(
-        cls.get(), __uuidof(IAudioPolicyConfigFactoryWin11),
+        cls.get(), IID_AudioPolicyConfigFactoryWin11,
         reinterpret_cast<void**>(&win11_));
     if (SUCCEEDED(hr) && win11_) return S_OK;
 
     win11_ = nullptr;
     hr = RoGetActivationFactory(
-        cls.get(), __uuidof(IAudioPolicyConfigFactoryWin10),
+        cls.get(), IID_AudioPolicyConfigFactoryWin10,
         reinterpret_cast<void**>(&win10_));
     if (SUCCEEDED(hr) && win10_) return S_OK;
 
@@ -80,7 +90,7 @@ std::wstring EndpointRouter::MakePolicyDeviceId(const std::wstring& mmDeviceId,
 
 HRESULT EndpointRouter::SetEndpoint(DWORD processId, const std::wstring& deviceId,
                                     EDataFlow flow, ERole role) {
-    if (!win11_ && !win10_) return E_NOT_VALID_STATE;
+    if (!win11_ && !win10_) return E_UNEXPECTED;  // Initialize() not called
 
     // An empty string is meaningful: it clears the override and returns the
     // process to following the system default. This is the restore path.
@@ -95,7 +105,7 @@ HRESULT EndpointRouter::SetEndpoint(DWORD processId, const std::wstring& deviceI
 
 HRESULT EndpointRouter::GetEndpoint(DWORD processId, std::wstring& deviceIdOut,
                                     EDataFlow flow, ERole role) {
-    if (!win11_ && !win10_) return E_NOT_VALID_STATE;
+    if (!win11_ && !win10_) return E_UNEXPECTED;  // Initialize() not called
 
     HString id;
     const UINT32 pid = static_cast<UINT32>(processId);

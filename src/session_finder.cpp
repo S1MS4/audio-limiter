@@ -1,12 +1,10 @@
 #include "session_finder.h"
+#include "com_ptr.h"
 
 #include <audiopolicy.h>
 #include <psapi.h>
-#include <wrl/client.h>
 #include <algorithm>
 #include <cwctype>
-
-using Microsoft::WRL::ComPtr;
 
 namespace sessions {
 namespace {
@@ -42,34 +40,36 @@ std::vector<AudioSession> EnumerateRenderSessions() {
     std::vector<AudioSession> out;
 
     ComPtr<IMMDeviceEnumerator> enumerator;
-    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-                                IID_PPV_ARGS(&enumerator)))) {
+    if (FAILED(CoCreateInstance(CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL,
+                                IID_IMMDeviceEnumerator,
+                                enumerator.put_void()))) {
         return out;
     }
 
     ComPtr<IMMDevice> device;
-    if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &device))) {
+    if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia,
+                                                   device.put()))) {
         return out;
     }
 
     ComPtr<IAudioSessionManager2> manager;
-    if (FAILED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL,
-                                nullptr, &manager))) {
+    if (FAILED(device->Activate(IID_IAudioSessionManager2, CLSCTX_ALL,
+                                nullptr, manager.put_void()))) {
         return out;
     }
 
     ComPtr<IAudioSessionEnumerator> sessionEnum;
-    if (FAILED(manager->GetSessionEnumerator(&sessionEnum))) return out;
+    if (FAILED(manager->GetSessionEnumerator(sessionEnum.put()))) return out;
 
     int count = 0;
     if (FAILED(sessionEnum->GetCount(&count))) return out;
 
     for (int i = 0; i < count; ++i) {
         ComPtr<IAudioSessionControl> control;
-        if (FAILED(sessionEnum->GetSession(i, &control))) continue;
+        if (FAILED(sessionEnum->GetSession(i, control.put()))) continue;
 
         ComPtr<IAudioSessionControl2> control2;
-        if (FAILED(control.As(&control2))) continue;
+        if (FAILED(control.query(IID_IAudioSessionControl2, control2))) continue;
 
         // Skip the system sounds session; it has no meaningful owning process.
         if (control2->IsSystemSoundsSession() == S_OK) continue;

@@ -8,18 +8,28 @@
 
 #include "audio_policy_config.h"
 #include "session_finder.h"
+#include "com_ptr.h"
 
 #include <functiondiscoverykeys_devpkey.h>
 #include <mmdeviceapi.h>
-#include <wrl/client.h>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
-using Microsoft::WRL::ComPtr;
-
 namespace {
+
+// Mixing printf and wprintf on one stream orients it to bytes and silently
+// truncates the wide output. Convert to UTF-8 and use narrow printf only.
+std::string U8(const std::wstring& w) {
+    if (w.empty()) return {};
+    const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(),
+                                      nullptr, 0, nullptr, nullptr);
+    std::string out(static_cast<size_t>(n), 0);
+    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(),
+                        out.data(), n, nullptr, nullptr);
+    return out;
+}
 
 struct Endpoint {
     std::wstring id;
@@ -31,15 +41,16 @@ std::vector<Endpoint> EnumerateRenderEndpoints() {
     std::vector<Endpoint> out;
 
     ComPtr<IMMDeviceEnumerator> enumerator;
-    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-                                IID_PPV_ARGS(&enumerator)))) {
+    if (FAILED(CoCreateInstance(CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL,
+                                IID_IMMDeviceEnumerator,
+                                enumerator.put_void()))) {
         return out;
     }
 
     std::wstring defaultId;
     ComPtr<IMMDevice> defaultDevice;
     if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia,
-                                                      &defaultDevice))) {
+                                                      defaultDevice.put()))) {
         LPWSTR id = nullptr;
         if (SUCCEEDED(defaultDevice->GetId(&id)) && id) {
             defaultId = id;
@@ -49,7 +60,7 @@ std::vector<Endpoint> EnumerateRenderEndpoints() {
 
     ComPtr<IMMDeviceCollection> collection;
     if (FAILED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE,
-                                              &collection))) {
+                                              collection.put()))) {
         return out;
     }
 
@@ -57,7 +68,7 @@ std::vector<Endpoint> EnumerateRenderEndpoints() {
     collection->GetCount(&count);
     for (UINT i = 0; i < count; ++i) {
         ComPtr<IMMDevice> device;
-        if (FAILED(collection->Item(i, &device))) continue;
+        if (FAILED(collection->Item(i, device.put()))) continue;
 
         Endpoint e;
         LPWSTR id = nullptr;
@@ -67,7 +78,7 @@ std::vector<Endpoint> EnumerateRenderEndpoints() {
         }
 
         ComPtr<IPropertyStore> props;
-        if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, &props))) {
+        if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, props.put()))) {
             PROPVARIANT v;
             PropVariantInit(&v);
             if (SUCCEEDED(props->GetValue(PKEY_Device_FriendlyName, &v)) &&
@@ -104,8 +115,8 @@ int CmdDevices() {
         return 1;
     }
     for (const auto& e : endpoints) {
-        std::wprintf(L"%s %s\n    %s\n", e.isDefault ? L"[default]" : L"         ",
-                     e.friendlyName.c_str(), e.id.c_str());
+        std::printf("%s %s\n    %s\n", e.isDefault ? "[default]" : "         ",
+                    U8(e.friendlyName).c_str(), U8(e.id).c_str());
     }
     return 0;
 }
@@ -117,9 +128,9 @@ int CmdSessions() {
         return 1;
     }
     for (const auto& s : all) {
-        std::wprintf(L"pid %-6lu %-8s %s\n", s.processId,
-                     s.active ? L"ACTIVE" : L"idle",
-                     s.executablePath.c_str());
+        std::printf("pid %-6lu %-8s %s\n", s.processId,
+                    s.active ? "ACTIVE" : "idle",
+                    U8(s.executablePath).c_str());
     }
     return 0;
 }
@@ -138,10 +149,10 @@ int CmdDiscord() {
 
     std::puts("Discord audio sessions:");
     for (const auto& s : matches) {
-        std::wprintf(L"  pid %-6lu %-8s %s\n", s.processId,
-                     s.active ? L"ACTIVE" : L"idle", s.executablePath.c_str());
+        std::printf("  pid %-6lu %-8s %s\n", s.processId,
+                    s.active ? "ACTIVE" : "idle", U8(s.executablePath).c_str());
     }
-    std::wprintf(L"\nselected pid: %lu\n", sessions::FindDiscordAudioPid());
+    std::printf("\nselected pid: %lu\n", sessions::FindDiscordAudioPid());
     return 0;
 }
 
@@ -164,7 +175,7 @@ int CmdGet(DWORD pid) {
     if (current.empty()) {
         std::printf("pid %lu: no override (following system default)\n", pid);
     } else {
-        std::wprintf(L"pid %lu: %s\n", pid, current.c_str());
+        std::printf("pid %lu: %s\n", pid, U8(current).c_str());
     }
     return 0;
 }
@@ -181,8 +192,8 @@ int CmdRoute(DWORD pid, const std::wstring& rawDeviceId) {
     // BEFORE the change, so a crash can never strand the user.
     std::wstring previous;
     router.GetEndpoint(pid, previous);
-    std::wprintf(L"previous: %s\n",
-                 previous.empty() ? L"(system default)" : previous.c_str());
+    std::printf("previous: %s\n",
+                previous.empty() ? "(system default)" : U8(previous).c_str());
 
     const std::wstring policyId =
         rawDeviceId.empty() ? std::wstring()
@@ -196,7 +207,8 @@ int CmdRoute(DWORD pid, const std::wstring& rawDeviceId) {
 
     std::wstring now;
     router.GetEndpoint(pid, now);
-    std::wprintf(L"now:      %s\n", now.empty() ? L"(system default)" : now.c_str());
+    std::printf("now:      %s\n",
+                now.empty() ? "(system default)" : U8(now).c_str());
     std::puts("\nVerify in Settings > System > Sound > Volume mixer.");
     return 0;
 }
@@ -205,6 +217,8 @@ int CmdRoute(DWORD pid, const std::wstring& rawDeviceId) {
 
 int wmain(int argc, wchar_t** argv) {
     if (argc < 2) { PrintUsage(); return 2; }
+
+    SetConsoleOutputCP(CP_UTF8);
 
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(hr)) {
