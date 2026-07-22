@@ -32,7 +32,16 @@ jobs:
             Copy-Item build\Release\AudioLimiter.exe build\AudioLimiter.exe -Force
           }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          & "$env:ProgramFiles(x86)\NSIS\makensis.exe" /V2 installer\installer.nsi
+          # Brace syntax is required: "$env:ProgramFiles(x86)" parses as
+          # $env:ProgramFiles followed by a literal "(x86)".
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $nsis)) { $nsis = "$env:ProgramFiles\NSIS\makensis.exe" }
+          if (-not (Test-Path $nsis)) {
+            choco install nsis -y --no-progress
+            $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          }
+          & $nsis /V2 installer\installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed with $LASTEXITCODE" }
 
       - name: Checksums
         run: |
