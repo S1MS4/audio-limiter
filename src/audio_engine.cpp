@@ -64,6 +64,11 @@ void AudioEngine::SetReleaseMs(float ms) {
     paramsDirty_.store(true, std::memory_order_release);
 }
 
+void AudioEngine::SetPreGain(float linear) {
+    pendingPreGain_.store(linear, std::memory_order_relaxed);
+    paramsDirty_.store(true, std::memory_order_release);
+}
+
 HRESULT AudioEngine::Start(const Config& cfg) {
     Stop();
 
@@ -72,6 +77,7 @@ HRESULT AudioEngine::Start(const Config& cfg) {
     lastError_.clear();
     pendingCeiling_.store(cfg.ceilingDb);
     pendingRelease_.store(cfg.releaseMs);
+    pendingPreGain_.store(cfg.preGain);
 
     // Probe the render device first: its mix format becomes the pipeline
     // format, and the capture side is asked to convert into it.
@@ -103,6 +109,7 @@ HRESULT AudioEngine::Start(const Config& cfg) {
     limiter_.Configure(rate, ch, cfg_.lookaheadMs);
     limiter_.SetCeilingDb(cfg_.ceilingDb);
     limiter_.SetRelease(cfg_.releaseMs);
+    limiter_.SetInputGain(cfg_.preGain);
     limiter_.Reset();
 
     // Buffer 200 ms. Large enough to ride out a scheduling hiccup, small
@@ -306,6 +313,7 @@ void AudioEngine::RenderLoop() {
         if (paramsDirty_.exchange(false, std::memory_order_acquire)) {
             limiter_.SetCeilingDb(pendingCeiling_.load(std::memory_order_relaxed));
             limiter_.SetRelease(pendingRelease_.load(std::memory_order_relaxed));
+            limiter_.SetInputGain(pendingPreGain_.load(std::memory_order_relaxed));
         }
 
         UINT32 padding = 0;

@@ -207,6 +207,47 @@ void TestGainRecovers() {
               std::to_string(tailPeak) + " vs original 0.05)");
 }
 
+// The engine feeds Discord's Windows-mixer volume in as input gain so the
+// limited path reproduces bypass loudness exactly. It must scale the signal
+// BEFORE the ceiling, and a gain of 1 must leave the old behavior untouched.
+void TestInputGainAppliesBeforeLimiting() {
+    std::puts("input gain applies before the ceiling");
+
+    // Half volume in the mixer means half amplitude out, ceiling untouched.
+    auto sig = Tone(440.0, 0.3, 0.4f);
+    dsp::Limiter lim; InitLimiter(lim, 0.0f);
+    lim.SetInputGain(0.5f);
+    ProcessChunked(lim, sig, 480);
+    const float peak = PeakOf(sig, 8000 * kCh);
+    Check(std::fabs(peak - 0.2f) < 1e-3f,
+          "0.4 tone at gain 0.5 comes out at 0.2 (" + std::to_string(peak) + ")");
+
+    // Default gain is 1: nothing changes for existing callers.
+    auto plain = Tone(440.0, 0.3, 0.4f);
+    dsp::Limiter l1; InitLimiter(l1, 0.0f);
+    ProcessChunked(l1, plain, 480);
+    const float plainPeak = PeakOf(plain, 8000 * kCh);
+    Check(std::fabs(plainPeak - 0.4f) < 1e-3f,
+          "gain defaults to 1 (" + std::to_string(plainPeak) + ")");
+
+    // A signal that is still hot after the gain is limited as usual.
+    auto hot = Tone(440.0, 0.3, 1.0f);
+    dsp::Limiter l2; InitLimiter(l2, -12.0f);
+    l2.SetInputGain(0.5f);   // -6 dB, still above a -12 dB ceiling
+    ProcessChunked(l2, hot, 480);
+    const float hotPeak = PeakOf(hot, 8000 * kCh);
+    Check(hotPeak <= dsp::DbToLinear(-12.0f) * 1.02f,
+          "gained signal still respects the ceiling (" +
+              std::to_string(dsp::LinearToDb(hotPeak)) + " dB)");
+
+    // Muted in the mixer means silent here too.
+    auto muted = Tone(440.0, 0.1, 0.8f);
+    dsp::Limiter l3; InitLimiter(l3, 0.0f);
+    l3.SetInputGain(0.0f);
+    ProcessChunked(l3, muted, 480);
+    Check(PeakOf(muted) < 1e-6f, "gain 0 silences the output");
+}
+
 void TestRingBuffer() {
     std::puts("ring buffer");
     dsp::RingBuffer rb;
@@ -243,6 +284,7 @@ int main() {
     TestOutputIsFinite();
     TestChunkSizeDoesNotChangeResult();
     TestGainRecovers();
+    TestInputGainAppliesBeforeLimiting();
     TestRingBuffer();
 
     std::printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "ALL PASSED",

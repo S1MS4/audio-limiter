@@ -114,6 +114,12 @@ public:
 
     void SetCeilingDb(float db) { ceiling_ = DbToLinear(db); }
 
+    // Linear gain applied to the input before peak detection, so limiting
+    // acts on the signal the listener would have heard in bypass. Carries
+    // the Windows-mixer volume the source had before it was rerouted here;
+    // without it the limited path is louder than bypass ever was.
+    void SetInputGain(float g) { inputGain_ = std::max(0.0f, g); }
+
     void SetRelease(float ms) {
         releaseMs_ = ms;
         // One-pole coefficient reaching ~63% of target in `ms`.
@@ -140,6 +146,8 @@ public:
 
         for (size_t i = 0; i < frames; ++i) {
             float* in = buf + i * ch;
+
+            for (size_t c = 0; c < ch; ++c) in[c] *= inputGain_;
 
             // Peak across channels: a spike in either ear must duck both,
             // otherwise the stereo image lurches sideways on every transient.
@@ -189,6 +197,7 @@ private:
     size_t delayPos_ = 0;
 
     float ceiling_ = 1.0f;
+    float inputGain_ = 1.0f;
     float gain_ = 1.0f;
     float releaseMs_ = 250.0f;
     float releaseCoef_ = 0.999f;

@@ -34,6 +34,12 @@ std::vector<AudioSession> EnumerateRenderSessions(
 // still be playing to the old device.
 bool IsRenderingTo(DWORD pid, const std::wstring& deviceId);
 
+// The volume the Windows mixer applies to this process's session on that
+// endpoint: per-app slider, with mute reported as 0. Empty deviceId means
+// the system default. Returns false when the process has no session there,
+// leaving volumeOut untouched.
+bool GetSessionVolume(DWORD pid, const std::wstring& deviceId, float& volumeOut);
+
 // Sessions whose executable matches any of `names` (case-insensitive,
 // filename only). Pass e.g. {L"Discord.exe", L"DiscordPTB.exe"}.
 std::vector<AudioSession> FindByExecutable(const std::vector<std::wstring>& names);

@@ -22,6 +22,9 @@ struct Config {
     float ceilingDb = -6.0f;
     float lookaheadMs = 5.0f;
     float releaseMs = 250.0f;
+    // Linear pre-limiter gain. Carries the Windows-mixer volume the source
+    // app had on the real device, which rerouting otherwise bypasses.
+    float preGain = 1.0f;
 };
 
 struct Stats {
@@ -51,6 +54,7 @@ public:
     // Safe to call while running.
     void SetCeilingDb(float db);
     void SetReleaseMs(float ms);
+    void SetPreGain(float linear);
 
     const Stats& stats() const { return stats_; }
     const std::wstring& lastError() const { return lastError_; }
@@ -74,6 +78,7 @@ private:
     // rather than applied directly, so the UI thread never touches DSP state.
     std::atomic<float> pendingCeiling_{-6.0f};
     std::atomic<float> pendingRelease_{250.0f};
+    std::atomic<float> pendingPreGain_{1.0f};
     std::atomic<bool> paramsDirty_{false};
 };
 

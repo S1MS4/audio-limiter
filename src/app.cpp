@@ -336,6 +336,14 @@ bool StartProtection(std::wstring& errorOut) {
         return false;
     }
 
+    // Off mode plays Discord through its own per-app slider in the Windows
+    // mixer; on mode replays the audio under our session, which silently
+    // bypasses that slider and comes out louder than bypass. Read the slider
+    // now, while Discord is still on the real device, and hand it to the
+    // engine as pre-gain so both settings sound the same.
+    float discordVolume = 1.0f;
+    sessions::GetSessionVolume(pid, L"", discordVolume);
+
     // Record intent BEFORE changing anything, so a crash between these two
     // lines is still recoverable on next launch.
     std::wstring previous;
@@ -371,6 +379,7 @@ bool StartProtection(std::wstring& errorOut) {
     cfg.ceilingDb = g_settings.ceilingDb;
     cfg.releaseMs = g_settings.releaseMs;
     cfg.lookaheadMs = 5.0f;
+    cfg.preGain = discordVolume;
 
     if (FAILED(g_engine.Start(cfg))) {
         ClearRouting();
@@ -397,6 +406,14 @@ void CheckDiscordStillRouted() {
     // reopens its stream. Watch for the stream actually arriving.
     if (!g_streamMoved && g_routedPid != 0 && !g_virtualId.empty())
         g_streamMoved = sessions::IsRenderingTo(g_routedPid, g_virtualId);
+
+    // Discord's session lingers in the mixer on the real device for a while
+    // after rerouting, so the user can still move its slider. Track it so
+    // on keeps matching off; once the session is gone the last value holds.
+    float discordVolume = 1.0f;
+    if (g_routedPid != 0 &&
+        sessions::GetSessionVolume(g_routedPid, L"", discordVolume))
+        g_engine.SetPreGain(discordVolume);
 
     const DWORD current = sessions::FindDiscordAudioPid();
     if (current == 0 || current == g_routedPid) return;

@@ -99,6 +99,61 @@ std::vector<AudioSession> EnumerateRenderSessions(const std::wstring& deviceId) 
     return out;
 }
 
+bool GetSessionVolume(DWORD pid, const std::wstring& deviceId, float& volumeOut) {
+    if (pid == 0) return false;
+
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    if (FAILED(CoCreateInstance(CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL,
+                                IID_IMMDeviceEnumerator,
+                                enumerator.put_void()))) {
+        return false;
+    }
+
+    ComPtr<IMMDevice> device;
+    if (deviceId.empty()) {
+        if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia,
+                                                       device.put())))
+            return false;
+    } else if (FAILED(enumerator->GetDevice(deviceId.c_str(), device.put()))) {
+        return false;
+    }
+
+    ComPtr<IAudioSessionManager2> manager;
+    if (FAILED(device->Activate(IID_IAudioSessionManager2, CLSCTX_ALL,
+                                nullptr, manager.put_void()))) {
+        return false;
+    }
+
+    ComPtr<IAudioSessionEnumerator> sessionEnum;
+    if (FAILED(manager->GetSessionEnumerator(sessionEnum.put()))) return false;
+
+    int count = 0;
+    if (FAILED(sessionEnum->GetCount(&count))) return false;
+
+    for (int i = 0; i < count; ++i) {
+        ComPtr<IAudioSessionControl> control;
+        if (FAILED(sessionEnum->GetSession(i, control.put()))) continue;
+
+        ComPtr<IAudioSessionControl2> control2;
+        if (FAILED(control.query(IID_IAudioSessionControl2, control2))) continue;
+
+        DWORD owner = 0;
+        if (FAILED(control2->GetProcessId(&owner)) || owner != pid) continue;
+
+        ComPtr<ISimpleAudioVolume> volume;
+        if (FAILED(control.query(IID_ISimpleAudioVolume, volume))) continue;
+
+        float level = 1.0f;
+        if (FAILED(volume->GetMasterVolume(&level))) continue;
+        BOOL mute = FALSE;
+        volume->GetMute(&mute);
+
+        volumeOut = mute ? 0.0f : level;
+        return true;
+    }
+    return false;
+}
+
 std::vector<AudioSession> FindByExecutable(const std::vector<std::wstring>& names) {
     std::vector<std::wstring> wanted;
     wanted.reserve(names.size());
