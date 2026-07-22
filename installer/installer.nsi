@@ -26,7 +26,7 @@ VIAddVersionKey "ProductVersion" "1.0.0.0"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\AudioLimiter.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Start Audio Limiter now"
-!define MUI_FINISHPAGE_TEXT "Audio Limiter is installed.$\r$\n$\r$\nIt runs in your system tray. Right-click the tray icon to set your volume limit."
+!define MUI_FINISHPAGE_TEXT "Audio Limiter is installed.$\r$\n$\r$\nIt runs in your system tray and protects Discord automatically. One switch turns it on and off."
 
 !insertmacro MUI_PAGE_LICENSE "..\LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
@@ -58,6 +58,22 @@ Section "Install"
   File "..\build\AudioLimiter.exe"
   File "..\LICENSE"
   File "..\README.md"
+
+  ; Bundled virtual audio device. Without one there is nowhere to divert
+  ; Discord's audio to, so the app cannot work at all -- shipping it is what
+  ; makes this standalone rather than a front-end for VB-CABLE.
+  SetOutPath "$INSTDIR\driver"
+  File "..\vendor\vad\Virtual Audio Driver\VirtualAudioDriver.inf"
+  File "..\vendor\vad\Virtual Audio Driver\VirtualAudioDriver.sys"
+  File "..\vendor\vad\Virtual Audio Driver\virtualaudiodriver.cat"
+  SetOutPath "$INSTDIR"
+
+  ; Driver installation is the only step needing administrator rights, so it
+  ; is elevated on its own rather than elevating the whole installer. If the
+  ; user already has a virtual device, declining is harmless.
+  DetailPrint "Installing virtual audio device..."
+  ExecShell "runas" "$INSTDIR\AudioLimiter.exe" "--install-driver" SW_HIDE
+  Sleep 6000
 
   WriteRegStr HKCU "Software\AudioLimiter" "InstallDir" "$INSTDIR"
 
@@ -101,6 +117,15 @@ Section "Uninstall"
     SendMessage $0 ${WM_CLOSE} 0 0
     Sleep 2000
   gone:
+
+  ; Remove the virtual device before deleting the exe that can remove it.
+  ExecShell "runas" "$INSTDIR\AudioLimiter.exe" "--uninstall-driver" SW_HIDE
+  Sleep 5000
+
+  Delete "$INSTDIR\driver\VirtualAudioDriver.inf"
+  Delete "$INSTDIR\driver\VirtualAudioDriver.sys"
+  Delete "$INSTDIR\driver\virtualaudiodriver.cat"
+  RMDir "$INSTDIR\driver"
 
   Delete "$INSTDIR\AudioLimiter.exe"
   Delete "$INSTDIR\LICENSE"

@@ -8,6 +8,7 @@
 #include "audio_policy_config.h"
 #include "session_finder.h"
 #include "com_ptr.h"
+#include "driver_install.h"
 
 #include <windows.h>
 #include <commctrl.h>
@@ -294,9 +295,10 @@ bool StartProtection(std::wstring& errorOut) {
     const auto devices = EnumRenderDevices();
     const std::wstring virt = PickVirtualDevice(devices);
     if (virt.empty()) {
-        errorOut = L"No virtual audio device found.\n\n"
-                   L"Audio Limiter needs one to redirect Discord's sound "
-                   L"through. Install VB-CABLE (free) and start again.";
+        errorOut = L"The virtual audio device is missing.\n\n"
+                   L"Audio Limiter needs it to redirect Discord's sound. "
+                   L"Reinstall Audio Limiter, and accept the prompt that asks "
+                   L"to install the audio device.";
         return false;
     }
 
@@ -453,10 +455,17 @@ constexpr COLORREF kText    = RGB(0xF5, 0xF0, 0xE8);   // cream
 constexpr COLORREF kMuted   = RGB(0xA6, 0x9A, 0x8C);
 constexpr COLORREF kFaint   = RGB(0x7A, 0x6E, 0x63);
 
-constexpr int kW = 400, kH = 470;
+constexpr int kW = 400;
+constexpr int kHSimple = 296;   // toggle, status, footer
+constexpr int kHFull   = 508;   // plus ceiling, devices, engine detail
+
+// Simple by default. The whole point of the product is that one switch is
+// enough; the slider is for the minority who want to tune it.
+bool g_advanced = false;
+int CurH() { return g_advanced ? kHFull : kHSimple; }
 
 struct Fonts {
-    HFONT serifTitle{}, serifValue{}, label{}, body{}, small_{}, bodyBold{};
+    HFONT serifTitle{}, serifValue{}, serifSub{}, label{}, body{}, small_{}, bodyBold{};
     void Create(int dpi) {
         auto mk = [&](const wchar_t* face, const wchar_t* fallback, int pt,
                       int weight) {
@@ -476,14 +485,15 @@ struct Fonts {
         // heavy feel the design calls for far better than a UI sans.
         serifTitle = mk(L"Georgia", L"Times New Roman", 16, FW_BOLD);
         serifValue = mk(L"Georgia", L"Times New Roman", 26, FW_BOLD);
+        serifSub   = mk(L"Georgia", L"Times New Roman", 12, FW_NORMAL);
         label      = mk(L"Segoe UI", L"Tahoma", 8, FW_SEMIBOLD);
         body       = mk(L"Segoe UI", L"Tahoma", 10, FW_NORMAL);
         bodyBold   = mk(L"Segoe UI", L"Tahoma", 9, FW_SEMIBOLD);
         small_     = mk(L"Segoe UI", L"Tahoma", 8, FW_NORMAL);
     }
     void Destroy() {
-        for (HFONT* f : {&serifTitle, &serifValue, &label, &body, &bodyBold,
-                         &small_})
+        for (HFONT* f : {&serifTitle, &serifValue, &serifSub, &label, &body,
+                         &bodyBold, &small_})
             if (*f) { DeleteObject(*f); *f = nullptr; }
     }
 };
@@ -600,63 +610,36 @@ void Paint(HWND h) {
                    on ? kText : kMuted);
     }
 
-    // --- ceiling ----------------------------------------------------------
+    // --- headline: what protection means right now ------------------------
     {
-        RECT rl{pad, S(84), rc.right / 2, S(102)};
-        Text(dc, L"CEILING", rl, g_fonts.label, kMuted, DT_LEFT | DT_TOP);
-
-        wchar_t val[16];
-        swprintf_s(val, L"%d", (int)g_settings.ceilingDb);
-        const SIZE vs = Measure(dc, val, g_fonts.serifValue);
-        const SIZE us = Measure(dc, L"dB", g_fonts.small_);
-
-        RECT ru{rc.right - pad - us.cx, S(90), rc.right - pad, S(112)};
-        Text(dc, L"dB", ru, g_fonts.small_, kMuted, DT_RIGHT | DT_TOP);
-
-        RECT rv{rc.right - pad - us.cx - S(4) - vs.cx, S(74),
-                rc.right - pad - us.cx - S(4), S(112)};
-        Text(dc, val, rv, g_fonts.serifValue, kAccent, DT_RIGHT | DT_TOP);
-    }
-
-    // --- slider -----------------------------------------------------------
-    {
-        const int y = S(122), th = S(6);
-        g_rSlider = {pad, y - S(12), rc.right - pad, y + th + S(12)};
-        RECT tr{pad, y, rc.right - pad, y + th};
-        FillRound(dc, tr, th, kTrack);
-
-        const float t = (g_settings.ceilingDb + 40.0f) / 40.0f;
-        const int span = tr.right - tr.left;
-        const int fx = tr.left + (int)(span * (t < 0 ? 0 : t > 1 ? 1 : t));
-        RECT fr{tr.left, y, fx, y + th};
-        if (fr.right > fr.left + 2) FillRound(dc, fr, th, kAccent);
-        FillCircle(dc, fx, y + th / 2, S(8), kAccent);
-
-        RECT rq{pad, y + S(14), rc.right - pad, y + S(32)};
-        Text(dc, L"Stricter", rq, g_fonts.small_, kFaint, DT_LEFT | DT_TOP);
-        Text(dc, L"Louder allowed", rq, g_fonts.small_, kFaint, DT_RIGHT | DT_TOP);
-    }
-
-    // --- status inset -----------------------------------------------------
-    {
-        RECT ri{pad, S(178), rc.right - pad, S(250)};
-        FillRound(dc, ri, S(12), kInset);
-
         const float in = st.inputPeakDb.load();
         const float gr = -st.gainReductionDb.load();
 
+        wchar_t head[160];
+        if (!on) {
+            wcscpy_s(head, L"Protection is off");
+        } else {
+            swprintf_s(head, L"Nothing louder than %d dB gets through",
+                       (int)g_settings.ceilingDb);
+        }
+        RECT rh{pad, S(88), rc.right - pad, S(116)};
+        Text(dc, head, rh, g_fonts.serifSub, on ? kText : kFaint,
+             DT_LEFT | DT_TOP | DT_END_ELLIPSIS | DT_SINGLELINE);
+
+        RECT ri{pad, S(126), rc.right - pad, S(198)};
+        FillRound(dc, ri, S(12), kInset);
+
         const wchar_t* msg;
         COLORREF dot;
-        if (!on)                    { msg = L"Paused";                            dot = kFaint; }
-        else if (gr > 0.5f)         { msg = L"Limiting — holding it down";    dot = kAccent; }
-        else if (in <= -59.0f)      { msg = L"Listening — nothing playing";   dot = kSage; }
-        else                        { msg = L"Listening — under the ceiling"; dot = kSage; }
+        if (!on)               { msg = L"Paused";                        dot = kFaint; }
+        else if (gr > 0.5f)    { msg = L"Caught a spike";                dot = kAccent; }
+        else if (in <= -59.0f) { msg = L"Listening - nothing playing";   dot = kSage; }
+        else                   { msg = L"Listening - under the ceiling"; dot = kSage; }
 
         FillCircle(dc, ri.left + S(18), ri.top + S(21), S(4), dot);
         RECT rm{ri.left + S(30), ri.top + S(13), ri.right - S(14), ri.top + S(32)};
         Text(dc, msg, rm, g_fonts.bodyBold, kText, DT_LEFT | DT_TOP);
 
-        // Level meter with a tick marking where the ceiling sits.
         const int my = ri.top + S(44), mh = S(6);
         RECT mr{ri.left + S(18), my, ri.right - S(18), my + mh};
         FillRound(dc, mr, mh, kTrack);
@@ -680,49 +663,84 @@ void Paint(HWND h) {
         DeleteObject(tp);
     }
 
-    // --- device fields ----------------------------------------------------
-    auto field = [&](RECT& out, int y, const wchar_t* cap,
-                     const std::wstring& v, int hotId) {
-        RECT rl{pad, y, rc.right - pad, y + S(16)};
-        Text(dc, cap, rl, g_fonts.label, kMuted, DT_LEFT | DT_TOP);
+    // Everything below is Advanced-only. Hidden by default, because the switch
+    // above is the whole product for almost everyone.
+    if (g_advanced) {
+        RECT rl{pad, S(216), rc.right / 2, S(234)};
+        Text(dc, L"CEILING", rl, g_fonts.label, kMuted, DT_LEFT | DT_TOP);
 
-        out = {pad, y + S(20), rc.right - pad, y + S(20) + S(38)};
-        FillRound(dc, out, S(19), g_hot == hotId ? kHover : kField);
+        wchar_t val[16];
+        swprintf_s(val, L"%d", (int)g_settings.ceilingDb);
+        const SIZE vs = Measure(dc, val, g_fonts.serifValue);
+        const SIZE us = Measure(dc, L"dB", g_fonts.small_);
 
-        RECT rv{out.left + S(16), out.top, out.right - S(28), out.bottom};
-        Text(dc, v.c_str(), rv, g_fonts.body, kText,
-             DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-    };
+        RECT ru{rc.right - pad - us.cx, S(222), rc.right - pad, S(246)};
+        Text(dc, L"dB", ru, g_fonts.small_, kMuted, DT_RIGHT | DT_TOP);
+        RECT rv{rc.right - pad - us.cx - S(4) - vs.cx, S(206),
+                rc.right - pad - us.cx - S(4), S(246)};
+        Text(dc, val, rv, g_fonts.serifValue, kAccent, DT_RIGHT | DT_TOP);
 
-    const std::wstring outName = g_settings.outputDeviceId.empty()
-                                     ? DeviceLabel(DefaultRenderId())
-                                     : DeviceLabel(g_settings.outputDeviceId);
-    const std::wstring virtName = DeviceLabel(PickVirtualDevice(g_dlgDevices));
+        const int y = S(256), th = S(6);
+        g_rSlider = {pad, y - S(12), rc.right - pad, y + th + S(12)};
+        RECT tr{pad, y, rc.right - pad, y + th};
+        FillRound(dc, tr, th, kTrack);
 
-    field(g_rOutput, S(266), L"YOU HEAR AUDIO THROUGH", outName, 1);
-    field(g_rVirtual, S(336), L"DISCORD IS REDIRECTED INTO", virtName, 2);
+        const float t = (g_settings.ceilingDb + 40.0f) / 40.0f;
+        const int span = tr.right - tr.left;
+        const int fx = tr.left + (int)(span * (t < 0 ? 0 : t > 1 ? 1 : t));
+        RECT fr{tr.left, y, fx, y + th};
+        if (fr.right > fr.left + 2) FillRound(dc, fr, th, kAccent);
+        FillCircle(dc, fx, y + th / 2, S(8), kAccent);
+
+        RECT rq{pad, y + S(14), rc.right - pad, y + S(32)};
+        Text(dc, L"Stricter", rq, g_fonts.small_, kFaint, DT_LEFT | DT_TOP);
+        Text(dc, L"Louder allowed", rq, g_fonts.small_, kFaint, DT_RIGHT | DT_TOP);
+
+        auto field = [&](RECT& out, int fy, const wchar_t* cap,
+                         const std::wstring& v, int hotId) {
+            RECT fl{pad, fy, rc.right - pad, fy + S(16)};
+            Text(dc, cap, fl, g_fonts.label, kMuted, DT_LEFT | DT_TOP);
+            out = {pad, fy + S(20), rc.right - pad, fy + S(20) + S(38)};
+            FillRound(dc, out, S(19), g_hot == hotId ? kHover : kField);
+            RECT fv{out.left + S(16), out.top, out.right - S(28), out.bottom};
+            Text(dc, v.c_str(), fv, g_fonts.body, kText,
+                 DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        };
+
+        const std::wstring outName = g_settings.outputDeviceId.empty()
+                                         ? DeviceLabel(DefaultRenderId())
+                                         : DeviceLabel(g_settings.outputDeviceId);
+        const std::wstring virtName = DeviceLabel(PickVirtualDevice(g_dlgDevices));
+        field(g_rOutput, S(302), L"YOU HEAR AUDIO THROUGH", outName, 1);
+        field(g_rVirtual, S(372), L"DISCORD IS REDIRECTED INTO", virtName, 2);
+    } else {
+        SetRectEmpty(&g_rSlider);
+        SetRectEmpty(&g_rOutput);
+        SetRectEmpty(&g_rVirtual);
+    }
 
     // --- footer -----------------------------------------------------------
     {
-        RECT rf{0, S(414), rc.right, rc.bottom};
+        RECT rf{0, rc.bottom - S(56), rc.right, rc.bottom};
         HBRUSH fb = CreateSolidBrush(kFooter);
         FillRect(dc, &rf, fb);
         DeleteObject(fb);
 
         wchar_t info[128];
-        swprintf_s(info, L"%s  ·  ~%.0f ms latency",
+        swprintf_s(info, L"%s  -  ~%.0f ms delay",
                    IsAutoStart() ? L"Starts with Windows" : L"Manual start",
                    5.0 + (st.sampleRate.load()
                               ? st.periodFrames.load() * 1000.0 /
                                     st.sampleRate.load()
                               : 10.0));
-        RECT ri2{pad, rf.top + S(18), rc.right / 2 + S(60), rf.bottom};
+        RECT ri2{pad, rf.top + S(19), rc.right - S(110), rf.bottom};
         Text(dc, info, ri2, g_fonts.small_, kFaint, DT_LEFT | DT_TOP);
 
-        const SIZE as = Measure(dc, L"Advanced...", g_fonts.bodyBold);
-        g_rAdvanced = {rc.right - pad - as.cx, rf.top + S(14),
-                       rc.right - pad, rf.top + S(36)};
-        Text(dc, L"Advanced...", g_rAdvanced, g_fonts.bodyBold,
+        const wchar_t* adv = g_advanced ? L"Less" : L"Advanced...";
+        const SIZE as = Measure(dc, adv, g_fonts.bodyBold);
+        g_rAdvanced = {rc.right - pad - as.cx, rf.top + S(16),
+                       rc.right - pad, rf.top + S(38)};
+        Text(dc, adv, g_rAdvanced, g_fonts.bodyBold,
              g_hot == 4 ? kText : kAccent, DT_RIGHT | DT_TOP);
     }
 
@@ -740,7 +758,7 @@ void ApplySize(HWND h, int x, int y) {
         dx = 96;
     const int dpi = (int)dx;
     const DWORD style = (DWORD)GetWindowLongPtrW(h, GWL_STYLE);
-    RECT r{0, 0, MulDiv(kW, dpi, 96), MulDiv(kH, dpi, 96)};
+    RECT r{0, 0, MulDiv(kW, dpi, 96), MulDiv(CurH(), dpi, 96)};
     AdjustWindowRectExForDpi(&r, style, FALSE, 0, (UINT)dpi);
     SetWindowPos(h, nullptr, x, y, r.right - r.left, r.bottom - r.top,
                  SWP_NOZORDER | SWP_NOACTIVATE);
@@ -863,7 +881,8 @@ LRESULT CALLBACK SettingsProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         GetDpiForMonitor(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST),
                          MDT_EFFECTIVE_DPI, &mdx, &mdy);
         RECT cr{}; GetClientRect(h, &cr);
-        if (cr.right != MulDiv(ui::kW, (int)mdx, 96)) {
+        if (cr.right != MulDiv(ui::kW, (int)mdx, 96) ||
+            cr.bottom != MulDiv(ui::CurH(), (int)mdx, 96)) {
             RECT wr{}; GetWindowRect(h, &wr);
             ui::ApplySize(h, wr.left, wr.top);
         }
@@ -884,7 +903,11 @@ LRESULT CALLBACK SettingsProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         } else if (PtInRect(&ui::g_rToggle, p)) {
             ui::ToggleProtection(h);
         } else if (PtInRect(&ui::g_rAdvanced, p)) {
-            ui::ShowAdvanced(h);
+            ui::g_advanced = !ui::g_advanced;
+            RECT wr{};
+            GetWindowRect(h, &wr);
+            ui::ApplySize(h, wr.left, wr.top);
+            InvalidateRect(h, nullptr, TRUE);
         }
         return 0;
     }
@@ -1058,8 +1081,25 @@ LONG WINAPI CrashHandler(EXCEPTION_POINTERS*) {
 
 } // namespace
 
-int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
+int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmdLine, int) {
     SetUnhandledExceptionFilter(CrashHandler);
+
+    // Driver install and removal run elevated from the installer, headless.
+    // Exit code, not a dialog, is what NSIS can act on.
+    if (cmdLine && wcsstr(cmdLine, L"--install-driver")) {
+        wchar_t dir[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, dir, MAX_PATH);
+        if (wchar_t* slash = wcsrchr(dir, L'\\')) *slash = 0;
+        const std::wstring inf =
+            std::wstring(dir) + L"\\driver\\VirtualAudioDriver.inf";
+        std::wstring err;
+        return driver::Install(inf, err) ? 0 : 1;
+    }
+    if (cmdLine && wcsstr(cmdLine, L"--uninstall-driver")) {
+        std::wstring err;
+        driver::Uninstall(err);
+        return 0;   // best effort; never block an uninstall on this
+    }
 
     // Loaded dynamically so the binary still runs on builds that predate
     // per-monitor v2. Without DPI awareness Windows stretches the window and

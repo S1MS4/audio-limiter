@@ -14,6 +14,7 @@ set(CORE_SOURCES
     src/session_finder.cpp
     src/audio_engine.cpp
     src/guids.cpp
+    src/driver_install.cpp
 )
 
 # The product: a tray application with no console window.
@@ -46,7 +47,8 @@ foreach(tgt AudioLimiter m0spike)
     # GUIDs come from src/guids.cpp rather than uuid.lib, so the same source
     # builds under MinGW, which does not ship them.
     target_link_libraries(${tgt} PRIVATE
-        ole32 oleaut32 runtimeobject avrt comctl32 shlwapi dwmapi shcore)
+        ole32 oleaut32 runtimeobject avrt comctl32 shlwapi dwmapi shcore
+        setupapi newdev cfgmgr32)
 
     if(MSVC)
         target_compile_options(${tgt} PRIVATE /W4 /permissive-)
