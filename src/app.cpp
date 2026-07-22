@@ -31,6 +31,14 @@ namespace {
 constexpr wchar_t kAppName[] = L"Audio Limiter";
 constexpr wchar_t kWndClass[] = L"AudioLimiterTrayWnd";
 constexpr UINT WM_TRAYICON = WM_APP + 1;
+constexpr int IDI_APPICON = 101;
+
+// Loaded once; owned by the module, never destroyed.
+HICON AppIcon(int px) {
+    return (HICON)LoadImageW(GetModuleHandleW(nullptr),
+                             MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON,
+                             px, px, LR_DEFAULTCOLOR | LR_SHARED);
+}
 
 enum : UINT {
     IDM_TOGGLE = 1000,
@@ -412,10 +420,11 @@ HICON MakeDotIcon(COLORREF colour) {
 
 void UpdateTrayIcon() {
     static HICON on = nullptr, off = nullptr;
-    if (!on) on = MakeDotIcon(RGB(34, 197, 94));    // green
-    if (!off) off = MakeDotIcon(RGB(120, 120, 120)); // grey
+    if (!on) on = AppIcon(GetSystemMetrics(SM_CXSMICON));
+    // Off state keeps the dot so the tray reads at a glance without colour.
+    if (!off) off = MakeDotIcon(RGB(120, 120, 120));
 
-    g_nid.hIcon = g_active ? on : off;
+    g_nid.hIcon = (g_active && on) ? on : off;
     wcscpy_s(g_nid.szTip, g_active ? L"Audio Limiter -- protecting"
                                    : L"Audio Limiter -- off");
     Shell_NotifyIconW(NIM_MODIFY, &g_nid);
@@ -978,6 +987,8 @@ void ShowSettings() {
         wc.hInstance = GetModuleHandleW(nullptr);
         wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
         wc.hbrBackground = nullptr;
+        wc.hIcon = AppIcon(GetSystemMetrics(SM_CXICON));
+        wc.hIconSm = AppIcon(GetSystemMetrics(SM_CXSMICON));
         wc.lpszClassName = L"AudioLimiterSettings";
         RegisterClassExW(&wc);
         registered = true;
