@@ -274,13 +274,21 @@ void RecoverStaleRouting() {
     while (!prev.empty() && (prev.back() == L'\n' || prev.back() == L'\r'))
         prev.pop_back();
 
-    if (pid != 0) g_router.SetEndpoint(pid, prev);
+    if (pid != 0) {
+        g_router.SetEndpoint(pid, prev, eRender, eConsole);
+        g_router.SetEndpoint(pid, prev, eRender, eMultimedia);
+        g_router.SetEndpoint(pid, prev, eRender, eCommunications);
+    }
     DeleteFileW(RoutingStatePath().c_str());
 }
 
 void ClearRouting() {
     if (g_routedPid != 0) {
-        g_router.SetEndpoint(g_routedPid, L"");
+        // Clear every role we set, or Discord stays pinned to a virtual
+        // endpoint nobody is draining and goes silent.
+        g_router.SetEndpoint(g_routedPid, L"", eRender, eConsole);
+        g_router.SetEndpoint(g_routedPid, L"", eRender, eMultimedia);
+        g_router.SetEndpoint(g_routedPid, L"", eRender, eCommunications);
         g_routedPid = 0;
     }
     DeleteFileW(RoutingStatePath().c_str());
@@ -336,7 +344,19 @@ bool StartProtection(std::wstring& errorOut) {
 
     const std::wstring policyId =
         routing::EndpointRouter::MakePolicyDeviceId(virt);
-    if (FAILED(g_router.SetEndpoint(pid, policyId))) {
+
+    // All three roles, not just eMultimedia. Discord is a voice application:
+    // it opens its render stream with eCommunications, so an override set
+    // only for eMultimedia is never consulted and the audio goes to the
+    // default device as if nothing had been configured. Windows' own per-app
+    // sound settings write all three, which is why doing it by hand works
+    // when doing it programmatically appeared not to.
+    HRESULT hr = g_router.SetEndpoint(pid, policyId, eRender, eConsole);
+    if (SUCCEEDED(hr))
+        hr = g_router.SetEndpoint(pid, policyId, eRender, eMultimedia);
+    if (SUCCEEDED(hr))
+        hr = g_router.SetEndpoint(pid, policyId, eRender, eCommunications);
+    if (FAILED(hr)) {
         DeleteFileW(RoutingStatePath().c_str());
         errorOut = L"Windows would not let us redirect Discord's audio.";
         return false;
@@ -382,7 +402,9 @@ void CheckDiscordStillRouted() {
     if (current == 0 || current == g_routedPid) return;
 
     // A different process owns Discord's audio now. Point at the new one.
-    g_router.SetEndpoint(g_routedPid, L"");
+    g_router.SetEndpoint(g_routedPid, L"", eRender, eConsole);
+    g_router.SetEndpoint(g_routedPid, L"", eRender, eMultimedia);
+    g_router.SetEndpoint(g_routedPid, L"", eRender, eCommunications);
     g_routedPid = 0;
     g_engine.Stop();
 

@@ -201,7 +201,11 @@ int CmdRoute(DWORD pid, const std::wstring& rawDeviceId) {
         rawDeviceId.empty() ? std::wstring()
                             : routing::EndpointRouter::MakePolicyDeviceId(rawDeviceId);
 
-    hr = router.SetEndpoint(pid, policyId);
+    // All three roles: a voice app uses eCommunications, and overriding only
+    // eMultimedia silently does nothing.
+    hr = router.SetEndpoint(pid, policyId, eRender, eConsole);
+    if (SUCCEEDED(hr)) hr = router.SetEndpoint(pid, policyId, eRender, eMultimedia);
+    if (SUCCEEDED(hr)) hr = router.SetEndpoint(pid, policyId, eRender, eCommunications);
     if (FAILED(hr)) {
         std::printf("SetPersistedDefaultAudioEndpoint failed: hr=0x%08lX\n", hr);
         return 1;
