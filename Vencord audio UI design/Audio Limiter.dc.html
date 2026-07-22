@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="stylesheet" href="_ds/organic-7a010c77-79c6-43ed-8b41-045272dc9dc6/styles.css">
+<style>
+body{margin:0;background:#211d1a;display:grid;place-items:center;min-height:100vh}
+a{color:var(--color-accent-300)}a:hover{color:var(--color-accent-200)}
+input[type=range].al-range{-webkit-appearance:none;appearance:none;height:8px;border-radius:999px;outline:none;width:100%;margin:0;cursor:pointer}
+input[type=range].al-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:var(--color-accent);border:3px solid #2b2723;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+input[type=range].al-range:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+.al-sel{width:100%;appearance:none;-webkit-appearance:none;border:1.5px solid #4a443d;background:#332e29;color:#f5ead8;font:500 13px var(--font-body,system-ui);padding:10px 36px 10px 14px;border-radius:999px;cursor:pointer}
+.al-sel:hover{border-color:var(--color-accent)}
+.al-sel:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+@keyframes al-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#2b2723"/><path d="M50 30c8 0 15 3 15 3v14c0 12-8 18-15 21-7-3-15-9-15-21V33s7-3 15-3Z" fill="none" stroke="#c67139" stroke-width="6" stroke-linejoin="round"/></svg></template>
+<div style="width:390px;background:#2b2723;border-radius:var(--radius-lg,16px);box-shadow:var(--shadow-lg);overflow:hidden;font-family:var(--font-body,system-ui);margin:32px 0">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 22px 0">
+    <div style="display:flex;align-items:center;gap:11px">
+      <div style="width:38px;height:38px;border-radius:50%;background: {{ badgeBg }};display:grid;place-items:center;color: {{ badgeFg }};transition:background .3s">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path></svg>
+      </div>
+      <div>
+        <div style="font-family:var(--font-heading);font-size:19px;color:#f5ead8;line-height:1.1">Audio Limiter</div>
+        <div style="font:500 12px var(--font-body);color: {{ statusColor }}">{{ statusText }}</div>
+      </div>
+    </div>
+    <button onClick="{{ toggle }}" aria-label="Toggle protection" style="width:52px;height:30px;border-radius:999px;border:none;cursor:pointer;position:relative;background: {{ switchBg }};transition:background .2s">
+      <span style="position:absolute;top:4px;width:22px;height:22px;border-radius:50%;background:#f5ead8;transition:left .2s;left: {{ switchKnob }}"></span>
+    </button>
+  </div>
+  <div style="padding:22px 22px 0">
+    <div style="display:flex;align-items:baseline;justify-content:space-between">
+      <span style="font:700 10.5px/1 var(--font-body);letter-spacing:.09em;text-transform:uppercase;color:#a89e90">Ceiling</span>
+      <span style="font-family:var(--font-heading);font-size:34px;color:var(--color-accent-300)">{{ ceilingStr }}<span style="font:500 13px var(--font-body);color:#a89e90"> dB</span></span>
+    </div>
+    <input class="al-range" type="range" min="-30" max="0" step="1" value="{{ ceiling }}" onChange="{{ setCeiling }}" onInput="{{ setCeiling }}" style="margin-top:8px;background: {{ trackBg }}">
+    <div style="display:flex;justify-content:space-between;font:500 11px var(--font-body);color:#8a8073;margin-top:7px"><span>Stricter</span><span>Louder allowed</span></div>
+  </div>
+  <div style="margin:18px 22px 0;background: {{ spikeCardBg }};border-radius:12px;padding:15px 16px;transition:background .3s">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
+      <span style="width:8px;height:8px;flex:none;border-radius:50%;background: {{ meterColor }};animation:al-pulse 2.4s ease-in-out infinite"></span>
+      <span style="font:600 12.5px var(--font-body);color:#f5ead8">{{ meterCaption }}</span>
+    </div>
+    <div style="height:8px;border-radius:999px;background:#211d1a;position:relative;overflow:hidden">
+      <div style="position:absolute;inset:0;width: {{ levelPctStr }};background: {{ meterColor }};border-radius:999px;transition:width 90ms linear"></div>
+      <div style="position:absolute;top:-2px;bottom:-2px;width:2px;background:#f5ead8;opacity:.5;left: {{ ceilingPctStr }}"></div>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:12px;padding:18px 22px 0">
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:700 10.5px/1 var(--font-body);letter-spacing:.09em;text-transform:uppercase;color:#a89e90">You hear audio through</span>
+      <select class="al-sel" value="{{ dev }}" onChange="{{ setDev }}">
+        <sc-for list="{{ devices }}" as="d" hint-placeholder-count="3"><option value="{{ $index }}">{{ d }}</option></sc-for>
+      </select>
+    </label>
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:700 10.5px/1 var(--font-body);letter-spacing:.09em;text-transform:uppercase;color:#a89e90">Discord is redirected into</span>
+      <select class="al-sel" value="{{ vdev }}" onChange="{{ setVdev }}">
+        <sc-for list="{{ vdevices }}" as="d" hint-placeholder-count="2"><option value="{{ $index }}">{{ d }}</option></sc-for>
+      </select>
+    </label>
+  </div>
+  <sc-if value="{{ adv }}" hint-placeholder-val="{{ false }}">
+    <div style="margin:18px 22px 0;border-top:1px solid #38332d;padding-top:16px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between">
+        <span style="font:600 13px var(--font-body);color:#f5ead8">Release</span>
+        <span style="font-family:var(--font-heading);font-size:18px;color:var(--color-accent-2-300)">{{ releaseStr }}<span style="font:500 12px var(--font-body);color:#a89e90"> ms</span></span>
+      </div>
+      <div style="font:400 11px/1.5 var(--font-body);color:#8a8073;margin:2px 0 8px">How gently volume comes back after a spike.</div>
+      <input class="al-range" type="range" min="50" max="1000" step="10" value="{{ release }}" onChange="{{ setRelease }}" onInput="{{ setRelease }}" style="background: {{ trackBgRelease }}">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:16px">
+        <span style="font:600 13px var(--font-body);color:#f5ead8">Lookahead</span>
+        <span style="font-family:var(--font-heading);font-size:18px;color:var(--color-accent-2-300)">{{ lookaheadStr }}<span style="font:500 12px var(--font-body);color:#a89e90"> ms</span></span>
+      </div>
+      <div style="font:400 11px/1.5 var(--font-body);color:#8a8073;margin:2px 0 8px">Spikes are caught this long before they play. Adds the same delay.</div>
+      <input class="al-range" type="range" min="1" max="20" step="1" value="{{ lookahead }}" onChange="{{ setLookahead }}" onInput="{{ setLookahead }}" style="background: {{ trackBgLookahead }}">
+      <div style="display:flex;justify-content:space-between;background:#332e29;border-radius:12px;padding:12px 16px;margin-top:16px">
+        <div><div style="font:700 10px/1 var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:#8a8073;margin-bottom:5px">Sample rate</div><div style="font:600 13px var(--font-body);color:#f5ead8">48 kHz</div></div>
+        <div><div style="font:700 10px/1 var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:#8a8073;margin-bottom:5px">Latency</div><div style="font:600 13px var(--font-body);color:#f5ead8">~{{ latencyStr }} ms</div></div>
+        <div><div style="font:700 10px/1 var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:#8a8073;margin-bottom:5px">Dropouts</div><div style="font:600 13px var(--font-body);color:var(--color-accent-2-300)">0</div></div>
+      </div>
+      <button onClick="{{ resetAdv }}" style="width:100%;margin-top:14px;border:1.5px solid #4a443d;background:none;color:#f5ead8;font:600 13px var(--font-body);padding:10px 0;border-radius:999px;cursor:pointer">Reset to defaults</button>
+    </div>
+  </sc-if>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px 18px;margin-top:6px;border-top:1px solid #38332d">
+    <span style="font:400 11px var(--font-body);color:#8a8073">Starts with Windows · ~{{ latencyStr }} ms latency</span>
+    <button onClick="{{ toggleAdv }}" style="border:none;background:none;cursor:pointer;font:600 11.5px var(--font-body);color:var(--color-accent-300);padding:4px 0">{{ advLabel }}</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:460,&quot;height&quot;:720},&quot;simulate&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo&quot;},&quot;startOn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo&quot;}}">
+class Component extends DCLogic {
+  state = { ceiling: -6, on: this.props.startOn ?? true, dev: 0, vdev: 0, level: -60, gr: 0, caught: 0, release: 250, lookahead: 5, adv: false };
+  componentDidMount() {
+    this._t = setInterval(() => {
+      if ((this.props.simulate ?? true) === false) return;
+      const s = this.state;
+      let target;
+      const r = Math.random();
+      if (r < 0.05) target = -3 + Math.random() * 3;
+      else if (r < 0.5) target = -30 + Math.random() * 12;
+      else target = -55 + Math.random() * 12;
+      let level = s.level + (target - s.level) * 0.55;
+      let gr = 0, caught = s.caught;
+      if (s.on && level > s.ceiling) { gr = level - s.ceiling; caught = Date.now(); }
+      this.setState({ level, gr, caught });
+    }, 110);
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+  pct(db) { return Math.max(0, Math.min(100, (db + 60) / 60 * 100)); }
+  renderVals() {
+    const s = this.state;
+    const on = !!s.on, ceiling = s.ceiling;
+    const shown = on ? Math.min(s.level, ceiling) : s.level;
+    const limiting = on && s.gr > 0.5;
+    const recent = Date.now() - s.caught < 1400;
+    return {
+      on, ceiling, adv: s.adv,
+      devices: ['Headphones (HyperX Cloud Alpha Wireless)', 'Speakers (Realtek HD Audio)', 'Headset (SteelSeries Arctis 7)'],
+      vdevices: ['Speakers (VB-Audio Voicemeeter VAIO)', 'CABLE Input (VB-Audio Virtual Cable)'],
+      dev: String(s.dev), vdev: String(s.vdev),
+      ceilingStr: (ceiling > -0.5 ? '0' : String(Math.round(ceiling))),
+      ceilingPctStr: this.pct(ceiling) + '%',
+      levelPctStr: this.pct(shown) + '%',
+      meterColor: limiting || recent ? 'var(--color-accent-400)' : 'var(--color-accent-2-500)',
+      meterCaption: !on ? 'Paused — audio passes through untouched'
+        : limiting ? ('Catching a spike — pulled down ' + s.gr.toFixed(0) + ' dB')
+        : recent ? 'Caught it. Your ears are fine.'
+        : (s.level < -45 ? 'Discord is quiet right now' : 'Listening — everything under the ceiling'),
+      trackBg: 'linear-gradient(to right, var(--color-accent-400) ' + ((ceiling + 30) / 30 * 100) + '%, #4a443d 0)',
+      switchBg: on ? 'var(--color-accent-2-600)' : '#4a443d',
+      switchKnob: on ? '26px' : '4px',
+      badgeBg: on ? (limiting || recent ? 'var(--color-accent-800)' : 'var(--color-accent-2-800)') : '#3d3730',
+      badgeFg: on ? '#f5ead8' : '#8a8073',
+      statusText: on ? (limiting || recent ? 'Limiting now' : 'Protecting') : 'Paused',
+      statusColor: on ? (limiting || recent ? 'var(--color-accent-300)' : 'var(--color-accent-2-300)') : '#8a8073',
+      spikeCardBg: limiting || recent ? '#3d2a20' : '#332e29',
+      release: s.release, releaseStr: String(s.release),
+      lookahead: s.lookahead, lookaheadStr: String(s.lookahead),
+      latencyStr: String(10 + s.lookahead),
+      trackBgRelease: 'linear-gradient(to right, var(--color-accent-2-500) ' + ((s.release - 50) / 950 * 100) + '%, #4a443d 0)',
+      trackBgLookahead: 'linear-gradient(to right, var(--color-accent-2-500) ' + ((s.lookahead - 1) / 19 * 100) + '%, #4a443d 0)',
+      advLabel: s.adv ? 'Hide advanced' : 'Advanced…',
+      toggle: () => this.setState(p => ({ on: !p.on })),
+      toggleAdv: () => this.setState(p => ({ adv: !p.adv })),
+      setCeiling: (e) => this.setState({ ceiling: Number(e.target.value) }),
+      setDev: (e) => this.setState({ dev: Number(e.target.value) }),
+      setVdev: (e) => this.setState({ vdev: Number(e.target.value) }),
+      setRelease: (e) => this.setState({ release: Number(e.target.value) }),
+      setLookahead: (e) => this.setState({ lookahead: Number(e.target.value) }),
+      resetAdv: () => this.setState({ release: 250, lookahead: 5 }),
+    };
+  }
+}
+</script>
+</body>
+</html>

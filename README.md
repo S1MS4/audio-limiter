@@ -198,11 +198,22 @@ Yes, and you should try it first. Windows has a built-in compressor: **Sound Con
 
 ---
 
+## Why not just use Voicemeeter?
+
+Honest answer: Voicemeeter can do this, and if you already run it, you may not need this at all. It has per-bus limiters, and pointing Discord at a virtual input and limiting that bus achieves the same result.
+
+What this does differently is remove the setup. Voicemeeter asks you to understand a mixer -- virtual inputs, buses, patch routing -- and to point Discord at the right device by hand. This finds Discord's audio process itself, routes it, and gives you one slider. It also re-finds Discord when it restarts under a new process id, which a static mixer configuration will not do.
+
+The honest weakness: **right now this still requires a virtual audio device**, which means for most people it sits on top of VB-CABLE or Voicemeeter rather than replacing it. Bundling a virtual device is the change that would make this stand on its own, and it is the top item below.
+
+To be clear about what it cannot do: **per-speaker limits are not possible in this design.** By the time Discord's audio reaches Windows it is already mixed to one stream, so individual voices cannot be separated. That would require running inside Discord, which this deliberately does not do.
+
+---
+
 ## Roadmap
 
+- Bundle a virtual audio device, so there is no prerequisite and no Voicemeeter needed
 - Authenticode signing so SmartScreen stops warning
-- Bundle a virtual audio device so there is no prerequisite at all
-- Per-user limits rather than one ceiling for everyone
 - A real project name
 
 ---
