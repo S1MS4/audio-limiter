@@ -20,9 +20,6 @@ set(CORE_SOURCES
 # The product: a tray application with no console window.
 add_executable(AudioLimiter WIN32 src/app.cpp src/app.rc ${CORE_SOURCES})
 
-# Developer harness for the routing layer.
-add_executable(m0spike src/main.cpp src/loopback_probe.cpp ${CORE_SOURCES})
-
 # Offline DSP tests. Console app, no Windows audio APIs involved.
 add_executable(test_dsp tests/test_dsp.cpp)
 target_include_directories(test_dsp PRIVATE src)
@@ -34,7 +31,7 @@ endif()
 enable_testing()
 add_test(NAME dsp COMMAND test_dsp)
 
-foreach(tgt AudioLimiter m0spike)
+foreach(tgt AudioLimiter)
     target_include_directories(${tgt} PRIVATE src)
     # Windows 10 1703+ headers: GetDpiForWindow, per-monitor v2 DPI contexts.
     target_compile_definitions(${tgt} PRIVATE UNICODE _UNICODE NOMINMAX
